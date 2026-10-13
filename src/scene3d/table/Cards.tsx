@@ -96,7 +96,7 @@ export function Cards() {
           return;
         }
         if (isHero) {
-          const base = polar(a, SEAT.heroCards, TABLE_Y + 0.2);
+          const base = polar(a, SEAT.heroCards, TABLE_Y + 0.3);
           out.push({
             key,
             card,

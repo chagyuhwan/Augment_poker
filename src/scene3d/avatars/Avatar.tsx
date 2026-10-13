@@ -26,7 +26,7 @@ export function Avatars() {
   for (let s = 0; s < state.maxSeats; s++) if (!taken.has(s)) empty.push(viewIndexOf(s, hero?.seat ?? 0, state.maxSeats));
   return (
     <>
-      {state.players.map((p) => (p.id === state.heroId ? null : <Avatar key={p.id} player={p} />))}
+      {state.players.map((p) => <Avatar key={p.id} player={p} />)}
       {empty.filter((v) => v !== 0).map((v) => (
         <EmptyStool key={`e${v}`} view={v} />
       ))}
@@ -158,6 +158,7 @@ function Avatar({ player }: { player: Player }) {
   const { state, paused, reduceMotion } = useScene();
   const v = viewOf(state, player.id);
   const a = seatAngle(v);
+  const isHero = player.id === state.heroId;
   const style = AVATAR_STYLES[player.id % AVATAR_STYLES.length];
   const seed = player.id * 1.7;
 
@@ -419,6 +420,8 @@ function Avatar({ player }: { player: Player }) {
           </mesh>
         ))}
       </group>
+      {/* 본인 정보는 화면 HUD에 있으므로 이름표를 띄우지 않는다 */}
+      {!isHero && (
       <SceneHtml position={[0, 1.95, 0]} center zIndexRange={[10, 0]}>
         <div
           className={[
@@ -461,6 +464,7 @@ function Avatar({ player }: { player: Player }) {
           )}
         </div>
       </SceneHtml>
+      )}
     </group>
   );
 }
