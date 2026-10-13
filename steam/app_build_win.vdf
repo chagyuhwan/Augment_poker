@@ -1,0 +1,20 @@
+"AppBuild"
+{
+	// 480을 Steamworks에서 발급받은 App ID로, depot ID(보통 App ID + 1)도 실제 값으로 교체
+	"AppID" "480"
+	"Desc" "Augment Poker Windows build"
+	"ContentRoot" "..\release\win-unpacked\"
+	"BuildOutput" ".\output\"
+	"Depots"
+	{
+		"481"
+		{
+			"FileMapping"
+			{
+				"LocalPath" "*"
+				"DepotPath" "."
+				"recursive" "1"
+			}
+		}
+	}
+}

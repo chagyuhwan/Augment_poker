@@ -10,15 +10,16 @@ interface Props {
 export function AugmentPicker({ state, onChoose, onReroll }: Props) {
   return (
     <div className="overlay">
-      <div className={`augment-picker tier-${state.offerTier}`}>
+      <div className={`panel augment-picker tier-${state.offerTier}`}>
         <h2>
           핸드 #{state.handNumber} · <span className="tier-name">{TIER_LABEL[state.offerTier]}</span> 증강 선택
         </h2>
         <div className="augment-options">
-          {state.augmentOffer.map((id) => {
+          {state.augmentOffer.map((id, i) => {
             const a = AUGMENTS[id];
             return (
               <button key={id} className={`augment-card tier-${a.tier}`} onClick={() => onChoose(id)}>
+                <span className="key-hint corner">{i + 1}</span>
                 <div className="augment-icon">{a.icon}</div>
                 <div className="augment-name">{a.name}</div>
                 <div className="augment-desc">{a.description}</div>
@@ -27,7 +28,7 @@ export function AugmentPicker({ state, onChoose, onReroll }: Props) {
           })}
         </div>
         <button className="reroll" disabled={state.rerolls <= 0} onClick={onReroll}>
-          🎲 새로고침 (남은 횟수 {state.rerolls})
+          🎲 새로고침 (남은 횟수 {state.rerolls}) <span className="key-hint">R</span>
         </button>
       </div>
     </div>
