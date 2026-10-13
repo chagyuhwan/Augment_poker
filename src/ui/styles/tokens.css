@@ -1,0 +1,61 @@
+/* 카지노 카툰 테마: 어두운 와인색 벨벳 + 금색 장식 + 두꺼운 외곽선 + 딱딱한 오프셋 그림자 */
+:root {
+  --bg-0: #12050a;
+  --bg-1: #1c0810;
+  --bg-2: #280c16;
+  --bg-3: #34111d;
+  --bg-4: #431726;
+  --line: rgba(255, 228, 196, 0.1);
+  --line-strong: rgba(255, 228, 196, 0.22);
+
+  --felt-1: #1f7a52;
+  --felt-2: #17613f;
+  --felt-3: #0f4a30;
+
+  --gold: #f2c14e;
+  --gold-hi: #ffdf8a;
+  --gold-lo: #b9851c;
+  --gold-glow: rgba(242, 193, 78, 0.36);
+  --ivory: #fbefd9;
+  --augment: #c79bff;
+  --augment-lo: rgba(199, 155, 255, 0.18);
+
+  --wine: #6b1a2c;
+  --wine-hi: #8e2a3f;
+  --wine-deep: #3a0d18;
+  /* 보조 강조색(예전 바다색 자리). 카지노 테마에서는 루비 */
+  --sea: #d0435a;
+  --sea-deep: #8a1f35;
+  --sand: #f1d7a6;
+  --coral: #ff6b5b;
+  --leaf: #5fd38a;
+  --wood: #7a3b22;
+  --wood-dark: #4a2012;
+
+  --text: #fff3e0;
+  --text-2: #ecd9c6;
+  --muted: #c4a29c;
+  --dim: #8a6a66;
+
+  --danger: #ff6b5b;
+  --danger-lo: rgba(255, 107, 91, 0.16);
+  --ok: #5fe0a0;
+
+  --outline: #0e0306;
+  --outline-w: 3px;
+  --shadow-hard: 0 5px 0 var(--outline);
+  --shadow-hard-lg: 0 8px 0 var(--outline);
+  --shadow-soft: 0 18px 40px rgba(8, 0, 3, 0.55);
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-ui: 'Jua', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+  --font-body: 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+  --font-display: 'Black Han Sans', 'Jua', 'Noto Sans KR', sans-serif;
+}

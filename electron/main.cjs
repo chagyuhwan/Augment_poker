@@ -1,68 +1,87 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
-const fs = require('node:fs');
+const { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell } = require('electron');
 const path = require('node:path');
+const { DEV_SERVER_URL, LOG_FILES_TO_KEEP, STEAM_APP_ID, WINDOW_TITLE } = require('./config.cjs');
+const { createLogger } = require('./logger.cjs');
+const { createSettingsStore } = require('./settingsStore.cjs');
+const { initSteam } = require('./steam.cjs');
+const { createWalletStore } = require('./walletStore.cjs');
 
-// Steamworks 파트너 사이트에서 발급받은 App ID로 교체해야 합니다. (480 = Valve 테스트용 Spacewar)
-const STEAM_APP_ID = 480;
-const DEV_SERVER_URL = 'http://localhost:5173';
 const isDev = process.argv.includes('--dev');
 
-let steam = null;
-let steamClient = null;
-
-let relaunchingThroughSteam = false;
-
-try {
-  steam = require('steamworks.js');
-  // 480(테스트용)으로 재실행하면 Spacewar가 켜지므로 실제 App ID일 때만 적용
-  if (app.isPackaged && STEAM_APP_ID !== 480 && steam.restartAppIfNecessary(STEAM_APP_ID)) {
-    relaunchingThroughSteam = true;
-  } else {
-    steamClient = steam.init(STEAM_APP_ID);
-    steam.electronEnableSteamOverlay();
-  }
-} catch (err) {
-  console.warn('[steam] Steam을 초기화하지 못했습니다. 오프라인 모드로 실행합니다.', err?.message ?? err);
-  steamClient = null;
+// 같은 PC에서 여러 클라이언트를 띄워 멀티플레이를 시험할 때: --instance=2
+// 인스턴스마다 userData를 분리해 설정/캐시 잠금이 충돌하지 않게 한다.
+const instanceArg = process.argv.find((a) => a.startsWith('--instance='));
+const instanceId = instanceArg ? Number(instanceArg.split('=')[1]) || 1 : null;
+if (instanceId && instanceId > 1) {
+  app.setPath('userData', `${app.getPath('userData')}-instance-${instanceId}`);
 }
 
-if (relaunchingThroughSteam) app.exit(0);
+const logger = createLogger(path.join(app.getPath('userData'), 'logs'), LOG_FILES_TO_KEEP);
+const channel = app.isPackaged ? 'release' : 'development';
+logger.info(
+  `start v${app.getVersion()} ${channel} electron=${process.versions.electron} os=${process.platform}-${process.arch}` +
+    `${instanceId ? ` instance=${instanceId}` : ''}`,
+);
 
-const savePath = () => path.join(app.getPath('userData'), 'save.json');
+process.on('uncaughtException', (err) => {
+  logger.error(`[main] uncaught exception: ${err?.stack ?? err}`);
+  dialog.showErrorBox('오류가 발생했습니다', `게임을 계속 진행할 수 없습니다.\n로그 파일: ${logger.file}`);
+  app.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error(`[main] unhandled rejection: ${reason?.stack ?? reason}`);
+});
 
-function readSave() {
-  try {
-    return JSON.parse(fs.readFileSync(savePath(), 'utf8'));
-  } catch {
-    return null;
-  }
-}
+const steam = initSteam({ appId: STEAM_APP_ID, isPackaged: app.isPackaged, logger });
+if (steam.relaunching) app.exit(0);
 
-function writeSave(data) {
-  const file = savePath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(`${file}.tmp`, JSON.stringify(data, null, 2));
-  fs.renameSync(`${file}.tmp`, file);
-}
-
+const settings = createSettingsStore(app.getPath('userData'), logger);
+const wallet = createWalletStore({
+  userDataDir: app.getPath('userData'),
+  accountKey: steam.status.steamId ?? 'local',
+  logger,
+});
 let win = null;
 
+function workArea() {
+  if (!win) return null;
+  const { width, height } = screen.getDisplayMatching(win.getBounds()).workAreaSize;
+  return { width, height };
+}
+
+function windowState() {
+  return { mode: win?.isFullScreen() ? 'fullscreen' : 'windowed', workArea: workArea() };
+}
+
+function applyWindowedSize(width, height) {
+  const area = workArea();
+  const w = area ? Math.min(width, area.width) : width;
+  const h = area ? Math.min(height, area.height) : height;
+  const [cw, ch] = win.getContentSize();
+  if (cw !== w || ch !== h) {
+    win.setContentSize(w, h);
+    win.center();
+  }
+}
+
 function createWindow() {
-  const save = readSave();
+  const prefs = settings.windowPrefs();
   win = new BrowserWindow({
-    width: 1600,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 576,
-    fullscreen: save?.settings?.fullscreen ?? false,
-    backgroundColor: '#0d1117',
-    title: '증강 포커',
+    width: prefs.width,
+    height: prefs.height,
+    useContentSize: true,
+    minWidth: 1280,
+    minHeight: 720,
+    fullscreen: prefs.fullscreen,
+    backgroundColor: '#060807',
+    title: WINDOW_TITLE,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
       devTools: isDev,
     },
   });
@@ -70,52 +89,61 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (e) => e.preventDefault());
-  win.on('enter-full-screen', () => win.webContents.send('fullscreen-changed', true));
-  win.on('leave-full-screen', () => win.webContents.send('fullscreen-changed', false));
+  win.on('enter-full-screen', () => win.webContents.send('window:mode-changed', 'fullscreen'));
+  win.on('leave-full-screen', () => win.webContents.send('window:mode-changed', 'windowed'));
+  win.webContents.on('render-process-gone', (_e, details) => {
+    logger.error(`[renderer] process gone: reason=${details.reason} exitCode=${details.exitCode}`);
+    if (details.reason !== 'clean-exit') win.webContents.reload();
+  });
+  win.webContents.on('did-fail-load', (_e, code, desc) => logger.error(`[renderer] load failed: ${code} ${desc}`));
 
-  if (isDev) {
-    win.loadURL(DEV_SERVER_URL);
-  } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  }
+  if (isDev) win.loadURL(DEV_SERVER_URL);
+  else win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
-ipcMain.handle('steam:info', () => {
-  if (!steamClient) return { available: false, playerName: null };
-  return { available: true, playerName: steamClient.localplayer.getName() };
-});
+ipcMain.handle('app:info', () => ({ version: app.getVersion(), channel }));
+ipcMain.handle('steam:status', () => steam.status);
+ipcMain.handle('settings:load', () => settings.load());
+ipcMain.handle('settings:save', (_e, data) => settings.save(data));
 
-ipcMain.handle('steam:unlockAchievement', (_e, id) => {
-  if (!steamClient) return false;
-  try {
-    if (steamClient.achievement.isActivated(id)) return true;
-    return steamClient.achievement.activate(id);
-  } catch {
-    return false;
+ipcMain.handle('wallet:get', () => wallet.get());
+ipcMain.handle('wallet:history', () => wallet.history());
+ipcMain.handle('wallet:op', (_e, op) => wallet.apply(op));
+
+ipcMain.handle('window:apply', (_e, mode, resolution) => {
+  if (!win) return windowState();
+  if (mode === 'fullscreen') {
+    if (!win.isFullScreen()) win.setFullScreen(true);
+  } else {
+    const width = Number(resolution?.width) || 1600;
+    const height = Number(resolution?.height) || 900;
+    if (win.isFullScreen()) {
+      // Windows는 전체화면 해제 직후 이전 창 크기를 복원하므로 그 다음에 크기를 적용한다
+      win.once('leave-full-screen', () => setTimeout(() => applyWindowedSize(width, height), 150));
+      win.setFullScreen(false);
+    } else {
+      applyWindowedSize(width, height);
+    }
   }
+  return { mode, workArea: workArea() };
 });
+ipcMain.handle('window:state', () => windowState());
 
-ipcMain.handle('save:load', () => readSave());
-ipcMain.handle('save:write', (_e, data) => {
-  writeSave(data);
-  return true;
+ipcMain.handle('app:openLogFolder', () => shell.openPath(logger.dir));
+ipcMain.on('log:write', (_e, level, message) => {
+  const fn = level === 'warn' || level === 'error' ? logger[level] : logger.info;
+  fn(`[renderer] ${String(message).slice(0, 4000)}`);
 });
-
-ipcMain.handle('window:setFullscreen', (_e, value) => {
-  win?.setFullScreen(Boolean(value));
-  return win?.isFullScreen() ?? false;
-});
-ipcMain.handle('window:isFullscreen', () => win?.isFullScreen() ?? false);
 ipcMain.handle('app:quit', () => app.quit());
 
-if (!app.requestSingleInstanceLock()) {
+const multiInstance = instanceId !== null;
+if (!multiInstance && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (win) {
-      if (win.isMinimized()) win.restore();
-      win.focus();
-    }
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
   });
 
   app.whenReady().then(() => {
@@ -124,4 +152,5 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => app.quit());
+  app.on('before-quit', () => logger.info('quit'));
 }

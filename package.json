@@ -1,7 +1,7 @@
 {
-  "name": "augment-poker",
-  "productName": "Augment Poker",
-  "description": "리그 오브 레전드식 증강을 더한 텍사스 홀덤",
+  "name": "augmented-poker",
+  "productName": "AUGMENTED POKER",
+  "description": "증강 드래프트를 더한 온라인 텍사스 홀덤 · 한국식 7포커",
   "author": "chagyuhwan",
   "private": true,
   "version": "0.1.0",
@@ -11,15 +11,18 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "simulate": "npx -y tsx scripts/simulate.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "electron scripts/ui-smoke.cjs",
     "electron:dev": "concurrently -k -n vite,electron \"vite\" \"wait-on tcp:5173 && electron . --dev\"",
+    "electron:second": "electron . --dev --instance=2",
     "electron:start": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win dir",
     "dist:linux": "npm run build && electron-builder --linux dir"
   },
   "build": {
-    "appId": "com.chagyuhwan.augmentpoker",
-    "productName": "Augment Poker",
+    "appId": "com.chagyuhwan.augmentedpoker",
+    "productName": "AUGMENTED POKER",
     "directories": {
       "output": "release"
     },
@@ -33,21 +36,32 @@
     ],
     "win": {
       "target": "dir",
-      "executableName": "AugmentPoker"
+      "executableName": "AugmentedPoker"
     },
     "linux": {
       "target": "dir",
-      "executableName": "augment-poker",
+      "executableName": "augmented-poker",
       "category": "Game"
     }
   },
   "dependencies": {
-    "steamworks.js": "^0.4.0"
+    "@fontsource/black-han-sans": "^5.3.0",
+    "@fontsource/jua": "^5.3.0",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.1",
+    "@react-three/postprocessing": "^3.2.0",
+    "maath": "^0.10.8",
+    "postprocessing": "^6.39.5",
+    "steamworks.js": "^0.4.0",
+    "three": "^0.186.1"
   },
   "devDependencies": {
+    "@fontsource/cinzel": "^5.3.0",
     "@fontsource/noto-sans-kr": "^5.3.1",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
     "electron": "^44.7.0",
@@ -56,6 +70,7 @@
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
+    "vitest": "^5.0.4",
     "wait-on": "^9.5.1"
   }
 }

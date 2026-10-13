@@ -1,16 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('desktop', {
-  steamInfo: () => ipcRenderer.invoke('steam:info'),
-  unlockAchievement: (id) => ipcRenderer.invoke('steam:unlockAchievement', id),
-  loadSave: () => ipcRenderer.invoke('save:load'),
-  writeSave: (data) => ipcRenderer.invoke('save:write', data),
-  setFullscreen: (value) => ipcRenderer.invoke('window:setFullscreen', value),
-  isFullscreen: () => ipcRenderer.invoke('window:isFullscreen'),
-  onFullscreenChanged: (cb) => {
-    const listener = (_e, value) => cb(value);
-    ipcRenderer.on('fullscreen-changed', listener);
-    return () => ipcRenderer.removeListener('fullscreen-changed', listener);
+  appInfo: () => ipcRenderer.invoke('app:info'),
+  steamStatus: () => ipcRenderer.invoke('steam:status'),
+  loadSettings: () => ipcRenderer.invoke('settings:load'),
+  saveSettings: (data) => ipcRenderer.invoke('settings:save', data),
+  applyWindow: (mode, resolution) => ipcRenderer.invoke('window:apply', mode, resolution),
+  windowState: () => ipcRenderer.invoke('window:state'),
+  onWindowModeChanged: (listener) => {
+    const handler = (_e, mode) => listener(mode);
+    ipcRenderer.on('window:mode-changed', handler);
+    return () => ipcRenderer.removeListener('window:mode-changed', handler);
   },
+  walletGet: () => ipcRenderer.invoke('wallet:get'),
+  walletHistory: () => ipcRenderer.invoke('wallet:history'),
+  walletOp: (op) => ipcRenderer.invoke('wallet:op', op),
+  openLogFolder: () => ipcRenderer.invoke('app:openLogFolder'),
+  log: (level, message) => ipcRenderer.send('log:write', level, message),
   quit: () => ipcRenderer.invoke('app:quit'),
 });

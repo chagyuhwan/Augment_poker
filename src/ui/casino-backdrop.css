@@ -1,0 +1,223 @@
+.casino-bg {
+  --px: 0;
+  --py: 0;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 30%, #5a1526 0%, #3a0d19 45%, #1c0610 80%, #10030a 100%);
+}
+
+.casino-bg .layer {
+  position: absolute;
+  inset: -40px;
+  transform: translate3d(calc(var(--px) * var(--d) * -60px), calc(var(--py) * var(--d) * -30px), 0);
+  will-change: transform;
+}
+
+/* 벨벳 벽 + 다마스크 무늬 */
+.casino-bg__wall {
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 9px),
+    radial-gradient(ellipse 70% 55% at 50% 28%, rgba(160, 40, 66, 0.55), transparent 75%);
+}
+
+.casino-bg__damask {
+  position: absolute;
+  inset: 0;
+  opacity: 0.16;
+  mix-blend-mode: screen;
+}
+
+.casino-bg__pillars {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-around;
+}
+
+.casino-bg__pillars i {
+  width: 46px;
+  height: 100%;
+  background: linear-gradient(90deg, #1a050c 0%, #3a0f1b 30%, #521729 50%, #3a0f1b 70%, #1a050c 100%);
+  border-left: 3px solid rgba(242, 193, 78, 0.35);
+  border-right: 3px solid rgba(242, 193, 78, 0.35);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+}
+
+/* 조명이 벽에 번지는 빛 */
+.casino-bg__glow {
+  background:
+    radial-gradient(ellipse 22% 38% at 18% 46%, rgba(255, 196, 110, 0.18), transparent 70%),
+    radial-gradient(ellipse 22% 38% at 50% 46%, rgba(255, 196, 110, 0.22), transparent 70%),
+    radial-gradient(ellipse 22% 38% at 82% 46%, rgba(255, 196, 110, 0.18), transparent 70%);
+  animation: casino-glow 5s ease-in-out infinite;
+}
+
+@keyframes casino-glow {
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* 펜던트 조명 */
+.lamp {
+  position: absolute;
+  top: 0;
+  width: 170px;
+  margin-left: -85px;
+  transform-origin: 50% 0;
+  animation: lamp-sway 6s ease-in-out infinite;
+}
+
+.lamp__cord {
+  width: 4px;
+  height: 70px;
+  margin: 0 auto;
+  background: #0e0306;
+}
+
+.lamp__shade {
+  display: block;
+  width: 160px;
+  margin: -2px auto 0;
+  filter: drop-shadow(0 0 18px rgba(255, 220, 140, 0.35));
+}
+
+.lamp__cone {
+  position: absolute;
+  left: 50%;
+  top: 148px;
+  width: 560px;
+  height: 70vh;
+  margin-left: -280px;
+  background: linear-gradient(180deg, rgba(255, 226, 150, 0.22), rgba(255, 210, 130, 0.06) 60%, transparent);
+  clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%);
+  filter: blur(6px);
+  pointer-events: none;
+  animation: lamp-flicker 7s steps(1) infinite;
+}
+
+@keyframes lamp-sway {
+  0%,
+  100% {
+    rotate: -1.2deg;
+  }
+  50% {
+    rotate: 1.2deg;
+  }
+}
+
+@keyframes lamp-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.85;
+  }
+  63% {
+    opacity: 1;
+  }
+}
+
+/* 보케 */
+.casino-bg__bokeh i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(3px);
+  animation: bokeh-drift 10s ease-in-out infinite;
+}
+
+.casino-bg__bokeh i.is-gold {
+  background: radial-gradient(circle, rgba(255, 216, 120, 0.55), rgba(255, 190, 80, 0.12) 60%, transparent 72%);
+}
+
+.casino-bg__bokeh i.is-ruby {
+  background: radial-gradient(circle, rgba(255, 110, 130, 0.45), rgba(208, 67, 90, 0.1) 60%, transparent 72%);
+}
+
+@keyframes bokeh-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: translate(18px, -26px) scale(1.15);
+    opacity: 0.9;
+  }
+}
+
+/* 떠다니는 칩 */
+.float-chip {
+  position: absolute;
+  top: -80px;
+  width: 54px;
+  height: 54px;
+  opacity: 0.55;
+  filter: blur(0.6px) drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
+  animation: chip-fall 18s linear infinite;
+}
+
+@keyframes chip-fall {
+  0% {
+    transform: translateY(0) rotateX(0deg) rotateZ(0deg);
+  }
+  100% {
+    transform: translateY(120vh) rotateX(720deg) rotateZ(260deg);
+  }
+}
+
+/* 아래쪽 나무 징두리 판벽 */
+.casino-bg__wainscot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26%;
+}
+
+.casino-bg__rail {
+  height: 16px;
+  background: linear-gradient(180deg, #ffdf8a, #f2c14e 45%, #8a5a10);
+  border-top: 3px solid #0e0306;
+  border-bottom: 3px solid #0e0306;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+
+.casino-bg__panels {
+  display: flex;
+  gap: 18px;
+  height: calc(100% - 16px);
+  padding: 22px 18px 0;
+  background: linear-gradient(180deg, #3a1609, #240c05);
+}
+
+.casino-bg__panels i {
+  flex: 1;
+  border: 3px solid rgba(242, 193, 78, 0.28);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.25));
+  box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
+}
+
+.casino-bg__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 75% 70% at 50% 42%, transparent 45%, rgba(6, 0, 3, 0.75) 100%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .casino-bg *,
+  .casino-bg {
+    animation: none !important;
+  }
+}
+
+.reduce-motion .casino-bg *,
+.reduce-motion .casino-bg {
+  animation: none !important;
+}

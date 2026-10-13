@@ -1,0 +1,1313 @@
+﻿/* 봇 대전 전용 스타일. 전역 .btn과 충돌하지 않도록 .practice / .pbtn으로 스코프한다. */
+.practice {
+  --panel: var(--bg-3);
+  --border: var(--line-strong);
+  --muted: var(--muted);
+  --gold: var(--gold);
+  --prismatic: var(--augment);
+  --silver: #c0c7d1;
+  --text: var(--text);
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  background: var(--bg-1);
+  color: var(--text);
+}
+
+.game-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.loading {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 22px;
+  background: linear-gradient(90deg, var(--gold), var(--prismatic));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.topbar-info {
+  flex: 1;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: right;
+}
+
+.layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.table-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* ── 테이블 ── */
+.table {
+  position: relative;
+  width: 780px;
+  height: 380px;
+  margin: 80px 160px 110px;
+  flex-shrink: 0;
+  border-radius: 200px;
+  background: radial-gradient(ellipse at center, #1f7a4a 0%, #135a35 70%, #0c4026 100%);
+  border: 14px solid #5a3a1e;
+  box-shadow: 0 0 0 4px #3b2512, 0 20px 60px rgba(0, 0, 0, 0.6), inset 0 0 40px rgba(0, 0, 0, 0.4);
+}
+
+.board {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.pot {
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px 16px;
+  border-radius: 20px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.community {
+  display: flex;
+  gap: 8px;
+}
+
+.next-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  background: rgba(80, 30, 120, 0.6);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+/* ── 카드 ── */
+.card {
+  width: 58px;
+  height: 82px;
+  border-radius: 7px;
+  background: #fdfdfd;
+  color: #1b1f24;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  user-select: none;
+  transition: transform 0.15s;
+}
+
+.card .rank {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.card .suit {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.card.red {
+  color: #d1242f;
+}
+
+.card.back {
+  background: repeating-linear-gradient(45deg, #23395d, #23395d 6px, #2c4a78 6px, #2c4a78 12px);
+  border: 2px solid #dfe6ee;
+}
+
+.card.small {
+  width: 34px;
+  height: 48px;
+}
+
+.card.small .rank,
+.card.small .suit {
+  font-size: 14px;
+}
+
+.card.highlight {
+  box-shadow: 0 0 0 3px var(--gold), 0 0 14px var(--gold);
+}
+
+.card.clickable {
+  cursor: pointer;
+  box-shadow: 0 0 0 3px var(--silver), 0 0 12px var(--silver);
+}
+
+.card.clickable:hover {
+  transform: translateY(-6px);
+}
+
+/* ── 좌석 ── */
+.seat {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: opacity 0.2s;
+}
+
+.seat.bottom {
+  bottom: -105px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.seat.top {
+  top: -95px;
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: column-reverse;
+}
+
+.seat.left {
+  left: -150px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.seat.right {
+  right: -150px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.seat-cards {
+  display: flex;
+  gap: 4px;
+}
+
+.seat-info {
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 12px;
+  min-width: 140px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.seat.turn .seat-info {
+  border-color: var(--gold);
+  box-shadow: 0 0 16px rgba(240, 180, 41, 0.6);
+}
+
+.seat.winner .seat-info {
+  border-color: #3fb950;
+  box-shadow: 0 0 18px rgba(63, 185, 80, 0.7);
+}
+
+.seat.folded {
+  opacity: 0.45;
+}
+
+.seat.out {
+  opacity: 0.25;
+}
+
+.seat-name {
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.dealer-btn {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: 11px;
+  align-items: center;
+  justify-content: center;
+}
+
+.seat-chips {
+  color: var(--gold);
+}
+
+.seat-augment {
+  margin-top: 3px;
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 1px 6px;
+  cursor: help;
+}
+
+.seat-action {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.seat-bet {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--gold);
+  font-weight: 700;
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--gold);
+}
+
+.seat.bottom .seat-bet {
+  top: -30px;
+}
+
+.seat.top .seat-bet {
+  bottom: 30px;
+  right: -60px;
+}
+
+.seat.left .seat-bet {
+  right: -60px;
+}
+
+.seat.right .seat-bet {
+  left: -60px;
+}
+
+/* ── 증강 등급 색 ── */
+.tier-silver {
+  --tier: var(--silver);
+}
+
+.tier-gold {
+  --tier: var(--gold);
+}
+
+.tier-prismatic {
+  --tier: var(--prismatic);
+}
+
+.seat-augment,
+.my-augment {
+  border: 1px solid var(--tier);
+  color: var(--tier);
+}
+
+/* ── 하단 바 ── */
+.bottom-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 900px;
+}
+
+.my-augment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.my-augment-title {
+  font-weight: 700;
+}
+
+.my-augment-desc {
+  color: var(--text);
+}
+
+.hint {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.action-panel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 56px;
+}
+
+.action-panel.waiting {
+  color: var(--muted);
+}
+
+.pbtn {
+  border: none;
+  border-radius: 8px;
+  padding: 12px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: #30363d;
+}
+
+.pbtn:hover {
+  filter: brightness(1.15);
+}
+
+.pbtn.fold {
+  background: #8b2b2b;
+}
+
+.pbtn.call {
+  background: #1f6feb;
+}
+
+.pbtn.raise {
+  background: #238636;
+}
+
+.pbtn.tiny {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.raise-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.raise-box input[type='range'] {
+  width: 180px;
+}
+
+.raise-presets {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── 로그 ── */
+.log {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  overflow-y: auto;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c9d1d9;
+}
+
+.log-hand {
+  margin-top: 10px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ── 게임 종료 오버레이 ── */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.panel {
+  background: var(--panel);
+  border: 2px solid var(--tier, var(--border));
+  border-radius: 16px;
+  padding: 28px 32px;
+  text-align: center;
+  box-shadow: 0 0 40px color-mix(in srgb, var(--tier, #000) 40%, transparent);
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.panel-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* ── 증강 선택 (TFT식 3열 드래프트) ── */
+.aug-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: 24px 40px 32px;
+  animation: aug-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.aug-overlay__veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(20, 48, 36, 0.35), transparent 70%),
+    rgba(3, 5, 4, 0.78);
+  backdrop-filter: blur(3px);
+}
+
+.aug-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 980px);
+  gap: 18px;
+}
+
+.aug-stage__head {
+  text-align: center;
+}
+
+.aug-stage__eyebrow {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(232, 227, 214, 0.65);
+}
+
+.aug-stage__title {
+  margin: 0;
+  font-family: var(--font-display, 'Cinzel', serif);
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #efe8d8;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.55);
+}
+
+.aug-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  width: 100%;
+  align-items: stretch;
+}
+
+.aug-slot {
+  --tier: var(--silver);
+  --tier-soft: rgba(192, 199, 209, 0.22);
+  --tier-glow: rgba(192, 199, 209, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.aug-slot.tier-gold {
+  --tier: var(--gold);
+  --tier-soft: rgba(201, 168, 92, 0.28);
+  --tier-glow: rgba(201, 168, 92, 0.45);
+}
+
+.aug-slot.tier-prismatic {
+  --tier: #c9a0ff;
+  --tier-soft: rgba(180, 156, 255, 0.3);
+  --tier-glow: rgba(180, 156, 255, 0.55);
+}
+
+.aug-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: min(420px, 52vh);
+  min-height: 320px;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  cursor: pointer;
+  color: #efe8d8;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 18%, var(--tier-soft), transparent 65%),
+    linear-gradient(180deg, #1a2220 0%, #0c100e 55%, #080a09 100%);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--tier) 70%, #000),
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.aug-card:hover,
+.aug-card:focus-visible {
+  transform: translateY(-10px) scale(1.02);
+  box-shadow:
+    0 0 0 2px var(--tier),
+    0 0 28px var(--tier-glow),
+    0 28px 50px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.aug-card__frame {
+  pointer-events: none;
+  position: absolute;
+  inset: 8px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--tier) 55%, transparent);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 0 24px color-mix(in srgb, var(--tier) 12%, transparent);
+}
+
+.aug-slot.tier-prismatic .aug-card__frame {
+  border-image: linear-gradient(135deg, #ff6bd6, #7b61ff, #3ad7ff, #f0b429) 1;
+  border-radius: 0;
+}
+
+.aug-card__glow {
+  pointer-events: none;
+  position: absolute;
+  top: -20%;
+  left: 10%;
+  right: 10%;
+  height: 45%;
+  background: radial-gradient(ellipse at center, var(--tier-glow), transparent 70%);
+  opacity: 0.55;
+}
+
+.aug-card__icon-wrap {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex: 0 0 42%;
+  min-height: 120px;
+}
+
+.aug-card__icon {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  font-size: 48px;
+  line-height: 1;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.18), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--tier) 35%, #1b2420), #0d1210);
+  border: 2px solid color-mix(in srgb, var(--tier) 80%, #fff 10%);
+  box-shadow:
+    0 0 28px var(--tier-glow),
+    inset 0 2px 8px rgba(255, 255, 255, 0.12);
+}
+
+.aug-card__body {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 22px 28px;
+  text-align: center;
+}
+
+.aug-card__tier {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--tier);
+}
+
+.aug-card__name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+
+.aug-card__desc {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(232, 227, 214, 0.82);
+  max-width: 28ch;
+}
+
+.aug-overlay[hidden] {
+  display: none;
+}
+
+.aug-card__key {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--tier) 70%, transparent);
+  background: color-mix(in srgb, var(--tier) 18%, #0a0e0c);
+  color: var(--tier);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+/* 선택된 카드 */
+.aug-slot.is-selected .aug-card {
+  transform: translateY(-14px) scale(1.035);
+  box-shadow:
+    0 0 0 3px var(--tier),
+    0 0 44px var(--tier-glow),
+    0 30px 56px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.aug-slot.is-selected .aug-card__glow {
+  opacity: 1;
+}
+
+.aug-slot.is-selected .aug-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.12) 50%, transparent 70%);
+  background-size: 250% 100%;
+  animation: aug-sheen 1.8s linear infinite;
+}
+
+.aug-slot {
+  animation: aug-card-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.aug-slot:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.aug-slot:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+/* 확정 연출 */
+.aug-slot.is-chosen .aug-card {
+  animation: aug-chosen 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.aug-slot.is-dismissed {
+  animation: aug-dismiss 260ms ease forwards;
+}
+
+@keyframes aug-dismiss {
+  to {
+    opacity: 0;
+    transform: translateY(30px) scale(0.94);
+  }
+}
+
+.aug-overlay.is-confirming .aug-actions,
+.aug-overlay.is-confirming .aug-slot-reroll,
+.aug-overlay.is-confirming .aug-timer {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+/* 카드별 새로고침 */
+.aug-slot-reroll {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px 0 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 168, 92, 0.45);
+  background: rgba(12, 16, 14, 0.92);
+  color: var(--gold);
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transition:
+    border-color 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.aug-slot-reroll__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 19px;
+  color: #1a1408;
+  background: linear-gradient(180deg, #e6cb85, #c9a85c);
+}
+
+.aug-slot-reroll:hover:not(:disabled) {
+  border-color: var(--gold);
+  transform: translateY(-1px);
+}
+
+.aug-slot-reroll:hover:not(:disabled) .aug-slot-reroll__icon {
+  animation: aug-spin 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.aug-slot-reroll:disabled,
+.aug-reroll-all:disabled,
+.aug-confirm:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* 제한시간 */
+.aug-timer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 360px;
+  margin: 12px auto 0;
+}
+
+.aug-timer__bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.aug-timer__fill {
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #c9a85c, #e6cb85);
+  transition: transform 100ms linear;
+}
+
+.aug-timer__sec {
+  min-width: 28px;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #e6cb85;
+  text-align: right;
+}
+
+.aug-timer.is-urgent .aug-timer__fill {
+  background: linear-gradient(90deg, #d9534f, #ff8a65);
+}
+
+.aug-timer.is-urgent .aug-timer__sec {
+  color: #ff8a65;
+  animation: aug-pulse 1s ease-in-out infinite;
+}
+
+/* 하단 액션 */
+.aug-actions {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.aug-actions kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid currentColor;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+.aug-peek,
+.aug-reroll-all {
+  display: inline-flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(232, 227, 214, 0.22);
+  background: rgba(12, 16, 14, 0.85);
+  color: rgba(232, 227, 214, 0.85);
+  font-size: 14px;
+  font-weight: 600;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.aug-peek {
+  justify-self: start;
+  user-select: none;
+}
+
+.aug-reroll-all {
+  justify-self: end;
+  color: var(--gold);
+  border-color: rgba(201, 168, 92, 0.4);
+}
+
+.aug-peek:hover,
+.aug-reroll-all:hover:not(:disabled) {
+  border-color: rgba(232, 227, 214, 0.55);
+  color: #fff;
+}
+
+.aug-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 280px;
+  height: 52px;
+  padding: 0 28px;
+  border-radius: 12px;
+  border: 1px solid #7fe0d0;
+  background: linear-gradient(180deg, #2f8f86, #1d5f59);
+  color: #f2fffd;
+  font-size: 17px;
+  font-weight: 800;
+  box-shadow:
+    0 0 24px rgba(80, 210, 190, 0.3),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+.aug-confirm:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 34px rgba(80, 210, 190, 0.5),
+    0 14px 28px rgba(0, 0, 0, 0.5);
+}
+
+/* 테이블 보기 */
+.aug-overlay.is-peeking .aug-overlay__veil,
+.aug-overlay.is-peeking .aug-stage > *:not(.aug-actions) {
+  opacity: 0.06;
+  transition: opacity 160ms ease;
+}
+
+.aug-overlay.is-peeking .aug-actions > *:not(.aug-peek) {
+  opacity: 0;
+}
+
+@keyframes aug-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px) scale(0.96);
+  }
+}
+
+@keyframes aug-chosen {
+  0% {
+    transform: translateY(-14px) scale(1.035);
+  }
+  45% {
+    transform: translateY(-22px) scale(1.09);
+    box-shadow:
+      0 0 0 3px var(--tier),
+      0 0 90px var(--tier-glow),
+      0 30px 56px rgba(0, 0, 0, 0.6);
+  }
+  100% {
+    transform: translateY(-40px) scale(0.9);
+    opacity: 0;
+  }
+}
+
+@keyframes aug-sheen {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@keyframes aug-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes aug-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+}
+
+@keyframes aug-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@media (max-height: 820px) {
+  .aug-stage__title {
+    font-size: 32px;
+  }
+
+  .aug-card {
+    height: min(360px, 48vh);
+    min-height: 280px;
+  }
+
+  .aug-card__icon {
+    width: 80px;
+    height: 80px;
+    font-size: 40px;
+  }
+
+  .aug-card__name {
+    font-size: 19px;
+  }
+
+  .aug-card__desc {
+    font-size: 13px;
+  }
+}
+
+.result-panel {
+  background: rgba(13, 17, 23, 0.95);
+  border: 2px solid #3fb950;
+  border-radius: 14px;
+  padding: 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  max-width: 620px;
+}
+
+.result-panel .pbtn {
+  margin-top: 10px;
+  align-self: center;
+}
+
+/* ── 단축키 표시 ── */
+.key-hint {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.key-hint.corner {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  margin: 0;
+}
+
+
+.practice .seat.bottom-left { left: -40px; bottom: -70px; }
+.practice .seat.bottom-right { right: -40px; bottom: -70px; }
+.practice .seat.top-left { left: 70px; top: -95px; flex-direction: column-reverse; }
+.practice .seat.top-right { right: 70px; top: -95px; flex-direction: column-reverse; }
+.practice .seat.bottom-left .seat-bet,
+.practice .seat.bottom-right .seat-bet { top: -28px; }
+.practice .seat.top-left .seat-bet,
+.practice .seat.top-right .seat-bet { bottom: 28px; }
+
+/* ── 빈자리 · 대기 · 좌석 증강 ── */
+.seat--empty .seat-info {
+  min-width: 120px;
+  border-style: dashed;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--muted);
+}
+
+.seat.is-waiting .seat-info {
+  border-style: dashed;
+}
+
+.seat-status {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #e6b35c;
+}
+
+.seat-augments {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.seat-augments .seat-augment {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  font-size: 15px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.seat-net {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.seat-net.is-plus {
+  color: #3fb950;
+}
+
+.seat-net.is-minus {
+  color: #f0776a;
+}
+
+.table-waiting {
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.my-augments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.my-augments .my-augment {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 58px;
+  justify-content: center;
+}
+
+.my-augment.is-empty {
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  align-items: center;
+}
+
+.my-augment-kind {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.action-flash {
+  padding: 4px 14px;
+  border-radius: 8px;
+  background: rgba(139, 43, 43, 0.85);
+  font-size: 13px;
+}
+
+/* ── 증강: 폴드 안내 · 교체 · 대기 ── */
+.aug-stage__notice {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: #e6b35c;
+}
+
+.aug-replace {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+}
+
+.aug-replace__lead {
+  margin: 0;
+  font-size: 16px;
+  color: rgba(232, 227, 214, 0.85);
+}
+
+.aug-replace__row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  width: 100%;
+}
+
+.aug-owned {
+  --tier: var(--silver);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 26px 18px 20px;
+  border-radius: 16px;
+  border: 2px solid color-mix(in srgb, var(--tier) 70%, #000);
+  background: linear-gradient(180deg, #1a2220, #0c100e);
+  color: #efe8d8;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.aug-owned:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--tier) 50%, transparent);
+}
+
+.aug-owned kbd {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-family: inherit;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.aug-owned__icon {
+  font-size: 40px;
+}
+
+.aug-owned__name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.aug-owned__kind {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.aug-owned__swap {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #f0776a;
+  font-weight: 700;
+}
+
+.aug-confirm--ghost {
+  border-color: rgba(232, 227, 214, 0.3);
+  background: rgba(12, 16, 14, 0.85);
+  box-shadow: none;
+}
+
+.aug-owned-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: rgba(232, 227, 214, 0.75);
+}
+
+.aug-owned-bar__slot {
+  --tier: rgba(232, 227, 214, 0.25);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--tier);
+  color: #efe8d8;
+}
+
+.aug-owned-bar__slot.is-empty {
+  border-style: dashed;
+  color: rgba(232, 227, 214, 0.45);
+}
+
+.aug-wait {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 420px;
+  padding: 32px 40px;
+  border-radius: 18px;
+  background: rgba(12, 16, 14, 0.9);
+  border: 1px solid rgba(232, 227, 214, 0.18);
+}
+
+.aug-wait__spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(232, 227, 214, 0.2);
+  border-top-color: var(--gold);
+  animation: aug-spin 900ms linear infinite reverse;
+}
+
+.aug-wait__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.aug-wait__desc {
+  margin: 0;
+  color: rgba(232, 227, 214, 0.7);
+}
+
+.aug-wait .aug-timer {
+  width: 100%;
+}
