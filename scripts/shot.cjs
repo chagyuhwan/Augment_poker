@@ -82,7 +82,11 @@ async function main() {
         await sleep(t);
         await shot(name);
         // 내 차례면 콜해서 진행
-        await js(`const c = document.querySelector('.action-panel .pbtn.call, .action-panel .act-btn--call'); c && c.click(); return true;`);
+        const called = await js(`const c = document.querySelector('.action-panel .pbtn.call, .action-panel .act-btn--call'); c && c.click(); return !!c;`);
+        if (called && name === 'table-deal') {
+          await sleep(900);
+          await shot('table-hero-bet');
+        }
       }
       const end = Date.now() + 40000;
       let picked = false;
@@ -98,7 +102,8 @@ async function main() {
           await sleep(500);
           await shot('table-augment-pick');
           picked = true;
-        } else if (st === 'aug') {
+          await sleep(3500);
+          await shot('table-mid');        } else if (st === 'aug') {
           await js(`s.key('Digit1'); await new Promise(r => setTimeout(r, 120)); s.key('Enter'); return true;`);
         } else if (st === 'result') {
           await sleep(900);

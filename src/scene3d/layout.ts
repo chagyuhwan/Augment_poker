@@ -31,14 +31,18 @@ export function faceCenter(angle: number): number {
 export const SEAT = {
   avatar: 2.75,
   stack: 1.62,
-  cards: 1.28,
-  bet: 0.98,
-  heroCards: 1.05,
+  cards: 1.52,
+  bet: 1.22,
+  heroCards: 1.42,
+  /** 본인 베팅은 카드 앞(중앙 쪽)에 둔다 */
+  heroBet: 0.55,
 };
 
-export const DECK_POS: Vec3 = [1.05, TABLE_Y + 0.02, -0.72];
-export const POT_POS: Vec3 = [-0.05, TABLE_Y, -0.68];
-export const COMMUNITY_Z = -0.02;
+export const DECK_POS: Vec3 = [0.66, TABLE_Y + 0.02, -1.05];
+export const POT_POS: Vec3 = [0, TABLE_Y, -0.58];
+/** 폴드한 패를 모아 두는 자리(덱 바로 앞) */
+export const MUCK_POS: Vec3 = [0.66, TABLE_Y + 0.01, -0.5];
+export const COMMUNITY_Z = 0.05;
 export const CARD_W = 0.36;
 export const CARD_H = 0.5;
 

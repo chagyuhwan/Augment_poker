@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { audio } from '../../audio/audioEngine';
 import type { Card } from '../../practice/game/types';
 import type { FxEvent } from '../fxBus';
-import { CARD_H, CARD_W, communityPos, DECK_POS, polar, SEAT, seatAngle, TABLE_Y, type Vec3 } from '../layout';
+import { CARD_H, CARD_W, communityPos, DECK_POS, MUCK_POS, polar, SEAT, seatAngle, TABLE_Y, type Vec3 } from '../layout';
 import { toonGradient } from '../materials';
 import { useFx, useScene, viewOf } from '../sceneContext';
 import { cardBackTexture, cardFaceTexture } from '../textures';
@@ -24,7 +24,6 @@ interface CardSpec {
   index: number;
 }
 
-const MUCK: Vec3 = [0.55, TABLE_Y + 0.01, -0.42];
 const geo = new THREE.PlaneGeometry(CARD_W, CARD_H);
 const glowGeo = new THREE.PlaneGeometry(CARD_W + 0.08, CARD_H + 0.08);
 
@@ -63,8 +62,10 @@ export function Cards() {
     const showdown = state.phase === 'handOver' && !!state.result?.showdown;
     const winners = new Set(state.phase === 'handOver' ? (state.result?.winnerIds ?? []) : []);
 
+    let mucked = 0;
     for (const p of state.players) {
       if (!p.inHand) continue;
+      const muckOrder = p.folded ? mucked++ : 0;
       const v = viewOf(state, p.id);
       const a = seatAngle(v);
       const isHero = p.id === state.heroId;
@@ -74,15 +75,19 @@ export function Cards() {
         const appearAt = deal && order >= 0 ? deal.at + order * FX_MS.dealCard * speed : seen(key, now);
         const n = p.hole.length;
         const off = idx - (n - 1) / 2;
-        const muckJitter = hash(key);
         if (p.folded) {
+          const layer = muckOrder * n + idx;
           out.push({
             key,
             card,
             faceUp: false,
-            pos: [MUCK[0] + (muckJitter - 0.5) * 0.3, MUCK[1] + idx * 0.004 + muckJitter * 0.01, MUCK[2] + (hash(key + 'z') - 0.5) * 0.25],
+            pos: [
+              MUCK_POS[0] + (hash(key) - 0.5) * 0.06,
+              MUCK_POS[1] + layer * 0.004,
+              MUCK_POS[2] + (hash(key + 'z') - 0.5) * 0.06,
+            ],
             tilt: 0,
-            yaw: muckJitter * 6,
+            yaw: 0.35 + (hash(key + 'y') - 0.5) * 0.3,
             appearAt,
             highlight: false,
             hero: isHero,
@@ -173,8 +178,9 @@ function Card3D({ spec }: { spec: CardSpec }) {
     [],
   );
 
+  // Suspense 재노출 등으로 다시 실행될 때 이미 나간 카드를 덱으로 되돌려 숨기지 않는다
   useLayoutEffect(() => {
-    if (!group.current) return;
+    if (!group.current || started.current) return;
     group.current.rotation.order = 'YXZ';
     group.current.position.set(...DECK_POS);
     group.current.rotation.set(0, 0.35, Math.PI);

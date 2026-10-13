@@ -47,8 +47,8 @@ function useFontsReady() {
   return ready;
 }
 
-const CAM_POS = new THREE.Vector3(0, 7.4, 6.9);
-const CAM_LOOK = new THREE.Vector3(0, 0.4, -0.2);
+const CAM_POS = new THREE.Vector3(0, 6.4, 7.0);
+const CAM_LOOK = new THREE.Vector3(0, 0.85, -0.5);
 
 function CameraRig() {
   const { reduceMotion, paused } = useScene();
@@ -75,7 +75,7 @@ function CameraRig() {
     const zoom = performance.now() < zoomUntil.current ? 1 : 0;
     const target = new THREE.Vector3(
       CAM_POS.x + pointer.x * 0.35 * k + Math.sin(t * 0.25) * 0.12 * k,
-      CAM_POS.y + pointer.y * 0.15 * k + Math.sin(t * 0.31) * 0.05 * k - zoom * 0.7,
+      CAM_POS.y + pointer.y * 0.15 * k + Math.sin(t * 0.31) * 0.05 * k - zoom * 0.35,
       CAM_POS.z - zoom * 1.1,
     );
     pos.current.lerp(target, 1 - Math.exp(-dt * 2.4));
@@ -145,7 +145,7 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
           shadows={q.shadows}
           dpr={q.dpr}
           gl={{ antialias: q.antialias, powerPreference: 'high-performance' }}
-          camera={{ position: CAM_POS.toArray(), fov: 40, near: 0.1, far: 60 }}
+          camera={{ position: CAM_POS.toArray(), fov: 42, near: 0.1, far: 60 }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 1.05;

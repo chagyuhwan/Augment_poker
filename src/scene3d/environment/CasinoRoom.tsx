@@ -8,6 +8,7 @@ import { carpetTexture, wallTexture } from '../textures';
 
 const ROOM_R = 13;
 const ROOM_H = 8;
+const SPOT_INTENSITY = 42;
 export const BG_COLOR = '#14050b';
 
 export function CasinoRoom({ quality }: { quality: QualityProfile }) {
@@ -15,7 +16,7 @@ export function CasinoRoom({ quality }: { quality: QualityProfile }) {
     <>
       <RoomLights quality={quality} />
       <Shell />
-      <PendantLamp position={[0, 3.6, 0]} main />
+      <PendantLamp position={[0, 5.3, 0]} main />
       <BackTable position={[-7.2, 0, -5.8]} rot={0.4} />
       <BackTable position={[7.4, 0, -5.2]} rot={-0.3} />
       <BackTable position={[0.6, 0, -10.2]} rot={0.1} />
@@ -37,7 +38,7 @@ function RoomLights({ quality }: { quality: QualityProfile }) {
     if (!spot.current) return;
     const t = clock.elapsedTime;
     // 아주 약한 깜빡임(전구 느낌)
-    spot.current.intensity = 26 * (1 + Math.sin(t * 13) * 0.008 + Math.sin(t * 2.1) * 0.015);
+    spot.current.intensity = SPOT_INTENSITY * (1 + Math.sin(t * 13) * 0.008 + Math.sin(t * 2.1) * 0.015);
   });
   return (
     <>
@@ -48,13 +49,13 @@ function RoomLights({ quality }: { quality: QualityProfile }) {
       <primitive object={target} />
       <spotLight
         ref={spot}
-        position={[0, 3.45, 0]}
+        position={[0, 5.1, 0]}
         target={target}
-        angle={0.95}
+        angle={0.62}
         penumbra={0.55}
-        distance={12}
+        distance={14}
         decay={1.6}
-        intensity={26}
+        intensity={SPOT_INTENSITY}
         color="#fff0d6"
         castShadow={quality.shadows}
         shadow-mapSize-width={quality.shadowMap}

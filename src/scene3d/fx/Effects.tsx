@@ -33,7 +33,7 @@ let fxId = 1;
 /** 화면 위치(본인은 앞쪽 카드 근처, 봇은 캐릭터 위치) */
 function actorPoint(state: ReturnType<typeof useScene>['state'], playerId: number, y: number): Vec3 {
   const v = viewOf(state, playerId);
-  return polar(seatAngle(v), v === 0 ? SEAT.heroCards + 0.5 : SEAT.avatar, y);
+  return polar(seatAngle(v), v === 0 ? SEAT.heroCards + 0.1 : SEAT.avatar, y);
 }
 
 export function Effects() {

@@ -33,12 +33,12 @@ export function seatPoint(state: GameState, playerId: number, r: number, y = TAB
 
 export function stackPoint(state: GameState, playerId: number): Vec3 {
   const v = viewOf(state, playerId);
-  const a = seatAngle(v) + (v === 0 ? -0.42 : -0.3);
+  const a = seatAngle(v) + (v === 0 ? -0.62 : -0.3);
   return polar(a, SEAT.stack, TABLE_Y);
 }
 
 export function betPoint(state: GameState, playerId: number): Vec3 {
-  return seatPoint(state, playerId, SEAT.bet);
+  return seatPoint(state, playerId, viewOf(state, playerId) === 0 ? SEAT.heroBet : SEAT.bet);
 }
 
 /** 버스 이벤트 구독 (최신 콜백 유지) */

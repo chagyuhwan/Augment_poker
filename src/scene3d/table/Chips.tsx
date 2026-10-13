@@ -214,7 +214,7 @@ export function TableChips() {
       })}
       {shown.pot > 0 && <ChipStack amount={shown.pot} position={POT_POS} bb={state.bb} columns={4} />}
       {potLabel > 0 && (
-        <SceneHtml position={[POT_POS[0], TABLE_Y + 0.42, POT_POS[2]]} center zIndexRange={[8, 0]} className="pot-tag-wrap">
+        <SceneHtml position={[POT_POS[0] - 0.42, TABLE_Y + 0.12, POT_POS[2]]} center zIndexRange={[8, 0]} className="pot-tag-wrap">
           <div className="pot-tag">
             <span className="pot-tag__label">팟</span>
             <span className="pot-tag__amount">{potLabel.toLocaleString()}</span>

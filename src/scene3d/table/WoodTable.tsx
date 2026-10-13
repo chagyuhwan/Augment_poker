@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { COLORS, toon, toonGradient } from '../materials';
-import { DECK_POS, FELT_RADIUS, OUTLINE, polar, SEAT, seatAngle, TABLE_RADIUS, TABLE_Y } from '../layout';
+import { DECK_POS, FELT_RADIUS, OUTLINE, polar, seatAngle, TABLE_RADIUS, TABLE_Y } from '../layout';
 import { useScene, viewOf } from '../sceneContext';
 import { cardBackTexture, feltTexture } from '../textures';
 
@@ -81,8 +81,9 @@ function DealerButton() {
   const dealer = state.players.find((p) => p.seat === state.dealerSeat && p.inHand);
   const target = useMemo(() => {
     if (!dealer) return null;
-    const a = seatAngle(viewOf(state, dealer.id)) + 0.36;
-    return new THREE.Vector3(...polar(a, SEAT.bet + 0.14, TABLE_Y + 0.025));
+    const v = viewOf(state, dealer.id);
+    const a = seatAngle(v) + (v === 0 ? 0.7 : 0.42);
+    return new THREE.Vector3(...polar(a, 1.42, TABLE_Y + 0.025));
   }, [dealer, state]);
   const tex = useMemo(() => {
     const c = document.createElement('canvas');
