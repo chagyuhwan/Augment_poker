@@ -681,6 +681,7 @@ kbd {
   border-radius: 28px;
   border: 4px solid var(--outline);
   background: #34111d;
+  overflow: hidden;
   box-shadow:
     inset 0 0 0 3px rgba(255, 255, 255, 0.1),
     0 9px 0 var(--outline),
@@ -1156,27 +1157,38 @@ kbd {
 }
 
 .mode-card__art {
-  right: 24%;
-  top: 52%;
+  right: 18%;
+  top: 50%;
 }
 
 .mode-card__art--4 {
-  right: 37%;
+  right: 26%;
+}
+
+.mode-card__body {
+  position: relative;
+  z-index: 2;
+  max-width: 48%;
+}
+
+.mode-card__name {
+  position: relative;
+  z-index: 2;
 }
 
 .mode-card__art .pcard {
-  --w: 190px;
-  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 12deg))
-    translateX(calc((var(--i) - (var(--n) - 1) / 2) * 38px));
+  --w: 148px;
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 11deg))
+    translateX(calc((var(--i) - (var(--n) - 1) / 2) * 28px));
 }
 
 .mode-card__art--4 .pcard {
-  --w: 170px;
+  --w: 128px;
 }
 
 .mode-card:hover .mode-card__art .pcard {
-  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 16deg))
-    translateX(calc((var(--i) - (var(--n) - 1) / 2) * 56px)) translateY(-12px);
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 14deg))
+    translateX(calc((var(--i) - (var(--n) - 1) / 2) * 40px)) translateY(-8px);
 }
 
 .mode-card__name {

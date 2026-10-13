@@ -115,10 +115,15 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
   }, []);
   const wrapRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
+    if (!fontsReady) return;
     const wrap = wrapRef.current;
+    const layer = htmlLayer.current;
     if (!wrap) return;
-    wrap.appendChild(htmlLayer.current);
-  });
+    wrap.appendChild(layer);
+    return () => {
+      layer.remove();
+    };
+  }, [htmlLayer, fontsReady]);
   const ctx = useMemo<SceneData>(
     () => ({
       state: props.state,
@@ -137,13 +142,15 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
     <SceneBoundary fallback={fallback}>
       <div className="scene3d" ref={wrapRef}>
         <Canvas
-          shadows={q.shadows ? 'soft' : false}
+          shadows={q.shadows}
           dpr={q.dpr}
           gl={{ antialias: q.antialias, powerPreference: 'high-performance' }}
           camera={{ position: CAM_POS.toArray(), fov: 40, near: 0.1, far: 60 }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 1.05;
+            // three r186에서 PCFSoftShadowMap이 제거되어 PCF로 고정한다
+            gl.shadowMap.type = THREE.PCFShadowMap;
           }}
         >
           <color attach="background" args={[BG_COLOR]} />

@@ -154,7 +154,7 @@ export function PendantLamp({ position, main = false }: { position: THREE.Vector
           <sphereGeometry args={[0.17, 12, 10]} />
         </mesh>
         {/* 안쪽 면(밝은 노란빛) */}
-        <mesh material={toon('#ffe9a8', { emissive: '#ffc95a', emissiveIntensity: 0.6 })}>
+        <mesh>
           <cylinderGeometry args={[0.3, 1.02, 0.48, 12, 1, true]} />
           <meshBasicMaterial color="#ffd98a" side={THREE.BackSide} toneMapped={false} />
         </mesh>
