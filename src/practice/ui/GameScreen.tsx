@@ -62,6 +62,7 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
   const [now, setNow] = useState(() => Date.now());
   const pausedAt = useRef<number | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [zoomHand, setZoomHand] = useState(false);
   const { settings } = useSettings();
   const use3d = canUseWebGL();
   const speed = ANIMATION_SPEED_FACTOR[settings.animationSpeed] * (settings.reduceMotion ? 0.6 : 1);
@@ -173,8 +174,30 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
     return () => window.removeEventListener('keydown', onKey);
   }, [state.phase, paused, halted, nextHand]);
 
+  // Q를 누르고 있는 동안 내 패를 화면 앞으로 크게 당긴다
+  useEffect(() => {
+    if (paused) return;
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'KeyQ' && !e.repeat) setZoomHand(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'KeyQ') setZoomHand(false);
+    };
+    const reset = () => setZoomHand(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', reset);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', reset);
+      setZoomHand(false);
+    };
+  }, [paused]);
+
   const me = byId(state, state.heroId);
   const heroSeat = me?.seat ?? 0;
+  const canZoom = !!me && me.inHand && !me.folded && me.hole.length > 0;
   const augmented = state.mode === 'augmented';
   const mulliganReady = canUseMulligan(state);
   const nextCard = canSeeNextCard(state) ? peekNextCard(state) : null;
@@ -280,6 +303,7 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
             reduceMotion={settings.reduceMotion}
             quality={settings.graphicsQuality}
             onHeroCard={onHeroCard}
+            zoomHand={zoomHand && canZoom}
             fallback={<div className="game3d__fallback">{table2d}</div>}
           />
         </Suspense>
@@ -336,6 +360,18 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
                   {heroNet > 0 ? '+' : ''}
                   {heroNet.toLocaleString()}
                 </div>
+              )}
+              {canZoom && (
+                <button
+                  type="button"
+                  className={zoomHand ? 'hud-btn hand-zoom is-on' : 'hud-btn hand-zoom'}
+                  title="누르고 있는 동안 내 패를 크게 봅니다"
+                  onPointerDown={() => setZoomHand(true)}
+                  onPointerUp={() => setZoomHand(false)}
+                  onPointerLeave={() => setZoomHand(false)}
+                >
+                  패 크게 <span className="key-hint">Q</span>
+                </button>
               )}
             </div>
           )}

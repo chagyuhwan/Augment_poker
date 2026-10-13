@@ -15,7 +15,7 @@ import {
   MessageModal,
   RoomPasswordModal,
 } from '../ui/modals/SimpleModals';
-import { CasinoBackdrop } from '../ui/CasinoBackdrop';
+import { MenuBackdrop } from '../ui/MenuBackdrop';
 import { Stage } from '../ui/Stage';
 import { NavigationProvider, useNavigation, type ModalRoute, type ScreenRoute } from './navigation';
 import { useSettings } from './settingsContext';
@@ -82,7 +82,7 @@ function Shell() {
 
   return (
     <Stage uiFactor={UI_SCALE_FACTOR[settings.uiScale]}>
-      {!inPractice && <CasinoBackdrop />}
+      {!inPractice && <MenuBackdrop dim={nav.screen.name !== 'menu'} />}
       <div className={inPractice ? 'screen-host screen-host--flat' : 'screen-host'} key={nav.screenKey}>
         {renderScreen(nav.screen)}
       </div>

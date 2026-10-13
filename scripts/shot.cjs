@@ -70,6 +70,11 @@ async function main() {
     if (scene === 'menu') {
       await sleep(600);
       await shot('menu');
+    } else if (scene === 'menu-bg') {
+      await js(`document.querySelector('.screen-host').style.visibility = 'hidden'; return true;`);
+      await sleep(400);
+      await shot('menu-bg');
+      await js(`document.querySelector('.screen-host').style.visibility = ''; return true;`);
     } else if (scene === 'setup') {
       await js(`s.click('봇 대전'); return true;`);
       await sleep(700);
@@ -86,6 +91,10 @@ async function main() {
         if (called && name === 'table-deal') {
           await sleep(900);
           await shot('table-hero-bet');
+          await js(`window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyQ', bubbles: true })); return true;`);
+          await sleep(800);
+          await shot('table-zoom');
+          await js(`window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyQ', bubbles: true })); return true;`);
         }
       }
       const end = Date.now() + 40000;

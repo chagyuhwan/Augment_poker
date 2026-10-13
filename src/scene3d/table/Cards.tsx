@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { audio } from '../../audio/audioEngine';
 import type { Card } from '../../practice/game/types';
 import type { FxEvent } from '../fxBus';
-import { CARD_H, CARD_W, communityPos, DECK_POS, MUCK_POS, polar, SEAT, seatAngle, TABLE_Y, type Vec3 } from '../layout';
+import { CAM_LOOK, CAM_POS, CARD_H, CARD_W, communityPos, DECK_POS, MUCK_POS, polar, SEAT, seatAngle, TABLE_Y, type Vec3 } from '../layout';
 import { toonGradient } from '../materials';
 import { useFx, useScene, viewOf } from '../sceneContext';
 import { cardBackTexture, cardFaceTexture } from '../textures';
@@ -22,7 +22,15 @@ interface CardSpec {
   highlight: boolean;
   hero: boolean;
   index: number;
+  scale?: number;
+  hideFace?: boolean;
 }
+
+/** 패 확대 위치: 기본 카메라에서 시선 방향으로 2.6 떨어진 곳, 카메라를 향하도록 기울임 */
+const ZOOM_DIST = 2.6;
+const camDir = new THREE.Vector3(CAM_LOOK[0] - CAM_POS[0], CAM_LOOK[1] - CAM_POS[1], CAM_LOOK[2] - CAM_POS[2]).normalize();
+const ZOOM_POS: Vec3 = [CAM_POS[0] + camDir.x * ZOOM_DIST, CAM_POS[1] + camDir.y * ZOOM_DIST - 0.12, CAM_POS[2] + camDir.z * ZOOM_DIST];
+const ZOOM_TILT = Math.PI / 2 - Math.atan2(-camDir.y, -camDir.z);
 
 const geo = new THREE.PlaneGeometry(CARD_W, CARD_H);
 const glowGeo = new THREE.PlaneGeometry(CARD_W + 0.08, CARD_H + 0.08);
@@ -34,7 +42,7 @@ function hash(s: string) {
 }
 
 export function Cards() {
-  const { state, bus, speed } = useScene();
+  const { state, bus, speed, zoomHand } = useScene();
   const [tick, setTick] = useState(0);
   useFx((e) => {
     if (e.type === 'deal' || e.type === 'street') setTick((t) => t + 1);
@@ -96,25 +104,62 @@ export function Cards() {
           return;
         }
         if (isHero) {
-          const base = polar(a, SEAT.heroCards, TABLE_Y + 0.3);
+          if (zoomHand) {
+            // 카메라 바로 앞으로 당겨 크게 본다
+            out.push({
+              key,
+              card,
+              faceUp: true,
+              pos: [ZOOM_POS[0] + off * 0.62, ZOOM_POS[1] - Math.abs(off) * 0.03, ZOOM_POS[2]],
+              tilt: ZOOM_TILT,
+              yaw: -off * 0.06,
+              appearAt,
+              highlight: winners.has(p.id) && showdown,
+              hero: true,
+              index: idx,
+              scale: 1.7,
+            });
+            return;
+          }
+          // 내 캐릭터가 얼굴 앞에 들고 있는 패(카메라 쪽으로 기울임)
+          const base = polar(a, SEAT.heroHeld, TABLE_Y + 0.62);
           out.push({
             key,
             card,
             faceUp: true,
-            pos: [base[0] + off * 0.54, base[1] + Math.abs(off) * -0.02, base[2] + Math.abs(off) * 0.02],
+            pos: [base[0] + off * 0.54, base[1] - Math.abs(off) * 0.03, base[2]],
             tilt: 0.78,
-            yaw: -off * 0.08,
+            yaw: -off * 0.1,
             appearAt,
             highlight: winners.has(p.id) && showdown,
             hero: true,
             index: idx,
+            scale: 1.4,
+          });
+          return;
+        }
+        const tx = -Math.sin(a);
+        const tz = Math.cos(a);
+        const revealed = state.revealed[p.id] === idx;
+        if (!showdown && !revealed) {
+          // 캐릭터가 가슴 앞에 들고 있는 패: 앞면은 캐릭터 쪽, 뒷면이 테이블 쪽을 본다
+          const held = polar(a, SEAT.held, TABLE_Y + 0.14);
+          out.push({
+            key,
+            card,
+            faceUp: false,
+            pos: [held[0] + tx * off * 0.13, held[1] - Math.abs(off) * 0.02, held[2] + tz * off * 0.13],
+            tilt: Math.PI / 2 + 0.35,
+            yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) + off * 0.18,
+            appearAt,
+            highlight: false,
+            hero: false,
+            index: idx,
+            hideFace: true,
           });
           return;
         }
         const base = polar(a, SEAT.cards, TABLE_Y + 0.008 + idx * 0.004);
-        const tx = -Math.sin(a);
-        const tz = Math.cos(a);
-        const revealed = state.revealed[p.id] === idx;
         out.push({
           key,
           card,
@@ -148,7 +193,7 @@ export function Cards() {
       });
     });
     return out;
-  }, [state, bus, speed, tick]);
+  }, [state, bus, speed, tick, zoomHand]);
 
   return (
     <>
@@ -169,10 +214,11 @@ function Card3D({ spec }: { spec: CardSpec }) {
   const [hover, setHover] = useState(false);
   const clickable = spec.hero && !!onHeroCard;
 
-  const front = useMemo(
-    () => new THREE.MeshToonMaterial({ map: cardFaceTexture(spec.card), gradientMap: toonGradient(), alphaTest: 0.5, side: THREE.FrontSide }),
-    [spec.card],
-  );
+  // 남이 들고 있는 패는 앞면 자리에도 뒷면을 그려 어느 각도에서도 숫자가 보이지 않게 한다
+  const front = useMemo(() => {
+    const map = spec.hideFace ? cardBackTexture() : cardFaceTexture(spec.card);
+    return new THREE.MeshToonMaterial({ map, emissiveMap: map, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0, gradientMap: toonGradient(), alphaTest: 0.5, side: THREE.FrontSide });
+  }, [spec.card, spec.hideFace]);
   const back = useMemo(
     () => new THREE.MeshToonMaterial({ map: cardBackTexture(), gradientMap: toonGradient(), alphaTest: 0.5, side: THREE.FrontSide }),
     [],
@@ -203,8 +249,10 @@ function Card3D({ spec }: { spec: CardSpec }) {
     const step = Math.min(dt, 0.05);
     easing.damp3(g.position, tmp, 0.11, step);
     easing.dampE(g.rotation, [spec.tilt, spec.yaw, spec.faceUp ? 0 : Math.PI], 0.13, step);
-    const sc = spec.hero && !spec.key.includes('-muck') && spec.faceUp ? 1.4 : 1;
+    const sc = spec.scale ?? 1;
     easing.damp3(g.scale, [sc, sc, sc], 0.15, step);
+    // 확대한 패는 조명 밖에 있으므로 스스로 밝힌다
+    easing.damp(front, 'emissiveIntensity', sc > 1.5 ? 0.5 : 0, 0.15, step);
     if (glow.current) {
       const m = glow.current.material as THREE.MeshBasicMaterial;
       const on = spec.highlight || clickable;

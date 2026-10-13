@@ -14,6 +14,8 @@ export interface SceneData {
   htmlLayer: { current: HTMLDivElement };
   /** 본인 카드 클릭(멀리건 증강) */
   onHeroCard?: (index: number) => void;
+  /** 내 패를 카메라 앞으로 크게 당겨 본다 */
+  zoomHand?: boolean;
 }
 
 export const SceneContext = createContext<SceneData | null>(null);

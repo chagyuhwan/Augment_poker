@@ -1,0 +1,27 @@
+.menu3d {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #14050b;
+  pointer-events: none;
+}
+
+.menu3d__canvas {
+  position: absolute !important;
+  inset: 0;
+}
+
+/* 양옆 메뉴와 아래 정보가 잘 읽히도록 가장자리를 살짝 눌러 준다 */
+.menu3d__shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(10, 2, 6, 0.45) 0%, transparent 28%, transparent 72%, rgba(10, 2, 6, 0.45) 100%),
+    linear-gradient(0deg, rgba(10, 2, 6, 0.6) 0%, transparent 18%),
+    radial-gradient(ellipse 80% 75% at 50% 45%, transparent 55%, rgba(6, 0, 3, 0.55) 100%);
+  transition: background-color 400ms ease;
+}
+
+.menu3d.is-dim .menu3d__shade {
+  background-color: rgba(10, 2, 6, 0.55);
+}

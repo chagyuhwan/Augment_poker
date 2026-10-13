@@ -8,6 +8,16 @@ import { useScene, viewOf } from '../sceneContext';
 import { cardBackTexture, feltTexture } from '../textures';
 
 export function WoodTable() {
+  return (
+    <group>
+      <TableBody />
+      <DealerButton />
+    </group>
+  );
+}
+
+/** 게임 상태 없이 그릴 수 있는 테이블 본체와 덱 */
+export function TableBody() {
   const feltMats = useMemo(() => {
     const side = toon('#1f7a52', { flat: true });
     const top = new THREE.MeshToonMaterial({ map: feltTexture(), gradientMap: toonGradient() });
@@ -58,7 +68,6 @@ export function WoodTable() {
         </mesh>
       ))}
       <Deck />
-      <DealerButton />
     </group>
   );
 }

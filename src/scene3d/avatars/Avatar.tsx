@@ -154,7 +154,7 @@ function Hat({ kind, color }: { kind: HatKind; color: string }) {
   }
 }
 
-function Avatar({ player }: { player: Player }) {
+export function Avatar({ player }: { player: Player }) {
   const { state, paused, reduceMotion } = useScene();
   const v = viewOf(state, player.id);
   const a = seatAngle(v);
@@ -192,6 +192,10 @@ function Avatar({ player }: { player: Player }) {
   const isWinner = handOver && !!state.result?.winnerIds.includes(player.id);
   const lost = handOver && player.inHand && !isWinner && (state.result?.net[player.id] ?? 0) < 0;
   const busted = player.status === 'busted';
+  const showdown = handOver && !!state.result?.showdown;
+  // 패를 손에 든 동안(카드 배치는 Cards.tsx와 맞춘다)
+  const holding =
+    player.inHand && !player.folded && player.hole.length > 0 && (isHero || (!showdown && state.revealed[player.id] === undefined));
   const persistent = busted ? 'busted' : isWinner ? 'win' : lost ? 'lose' : player.folded ? 'folded' : isTurn ? 'think' : player.status === 'waiting' ? 'away' : 'idle';
 
   useFrame(({ clock }, rawDt) => {
@@ -203,6 +207,7 @@ function Avatar({ player }: { player: Player }) {
     let pose: string = persistent;
     if ((pose === 'win' || pose === 'lose') && now < awardAt.current) pose = 'idle';
     if (tr) pose = tr.kind;
+    if (holding && (pose === 'idle' || pose === 'think')) pose = pose === 'think' ? 'holdThink' : 'hold';
     const k = reduceMotion ? 0.3 : 1;
 
     // 기본값
@@ -218,6 +223,18 @@ function Avatar({ player }: { player: Player }) {
     const breathe = 1 + Math.sin(t * 2.1) * 0.02 * k;
 
     switch (pose) {
+      case 'hold':
+      case 'holdThink':
+        // 두 손을 모아 가슴(본인은 얼굴) 앞에서 패를 든다
+        lX = rX = isHero ? -2.3 : -1.9;
+        lZ = 0.35;
+        rZ = -0.35;
+        headX = isHero ? 0 : 0.2;
+        if (pose === 'holdThink') {
+          headZ = 0.14 + Math.sin(t * 1.4) * 0.06 * k;
+          headY = Math.sin(t * 0.9) * 0.18 * k;
+        }
+        break;
       case 'think':
         rX = -2.5;
         rZ = 0.45;

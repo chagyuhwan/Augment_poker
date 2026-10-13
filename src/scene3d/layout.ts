@@ -28,12 +28,19 @@ export function faceCenter(angle: number): number {
   return -angle - Math.PI / 2;
 }
 
+/** 게임 테이블 기본 카메라 */
+export const CAM_POS: Vec3 = [0, 6.4, 7.0];
+export const CAM_LOOK: Vec3 = [0, 0.85, -0.5];
+
 export const SEAT = {
   avatar: 2.75,
   stack: 1.62,
   cards: 1.52,
   bet: 1.22,
   heroCards: 1.42,
+  /** 손에 든 패(캐릭터 바로 앞) */
+  held: 2.36,
+  heroHeld: 2.12,
   /** 본인 베팅은 카드 앞(중앙 쪽)에 둔다 */
   heroBet: 0.55,
 };

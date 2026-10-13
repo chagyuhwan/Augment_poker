@@ -112,7 +112,7 @@ async function testSize(width, height, full) {
     `뷰포트 ${width}x${height}`,
     `return window.innerWidth === ${width} && window.innerHeight === ${height} || [window.innerWidth, window.innerHeight];`,
   );
-  await step('메인 메뉴 표시', `return !!t.q('.main-menu') && t.qa('.mode-card').length === 4;`, 'main-menu');
+  await step('메인 메뉴 표시', `return !!t.q('.main-menu') && t.qa('.main-nav .hub-btn').length === 7;`, 'main-menu');
 
   if (full) {
     const money = (sel) => `Number((t.text('${sel}') ?? '').replace(/[^0-9]/g, ''))`;
@@ -276,7 +276,10 @@ async function testSize(width, height, full) {
   await step('ESC로 메인 복귀', `t.esc(); return true;`);
   await step('메인 메뉴 복귀 확인', `return !!t.q('.main-menu');`);
 
-  await step('증강 7포커 카드 → 필터된 방 목록', `t.click('증강 7포커'); return true;`);
+  await step(
+    '방 찾기 → 증강 7포커 필터',
+    `t.click('방 찾기'); await new Promise(r => setTimeout(r, 300)); t.click('증강 7포커'); return true;`,
+  );
   await step(
     '필터가 증강 7포커로 설정됨',
     `return t.text('.segmented__item.is-active') === '증강 7포커';`,

@@ -30,10 +30,9 @@ interface Popup {
 
 let fxId = 1;
 
-/** 화면 위치(본인은 앞쪽 카드 근처, 봇은 캐릭터 위치) */
+/** 플레이어 캐릭터 위치(본인 포함) */
 function actorPoint(state: ReturnType<typeof useScene>['state'], playerId: number, y: number): Vec3 {
-  const v = viewOf(state, playerId);
-  return polar(seatAngle(v), v === 0 ? SEAT.heroCards + 0.1 : SEAT.avatar, y);
+  return polar(seatAngle(viewOf(state, playerId)), SEAT.avatar, y);
 }
 
 export function Effects() {
@@ -52,7 +51,7 @@ export function Effects() {
       const p: Popup[] = [];
       for (const w of e.winners) {
         const hero = w.playerId === s.heroId;
-        if (!reduceMotion) b.push({ id: fxId++, at: e.at + 250, pos: hero ? actorPoint(s, w.playerId, TABLE_Y + 0.3) : stackPoint(s, w.playerId), big: hero });
+        if (!reduceMotion) b.push({ id: fxId++, at: e.at + 250, pos: hero ? polar(seatAngle(0), 1.9, TABLE_Y + 0.3) : stackPoint(s, w.playerId), big: hero });
         if (w.amount > 0) p.push({ id: fxId++, delay: e.at + 400 - now, pos: actorPoint(s, w.playerId, TABLE_Y + 1.15), text: `+${w.amount.toLocaleString()}`, kind: 'plus' });
       }
       setBursts((x) => [...x, ...b]);

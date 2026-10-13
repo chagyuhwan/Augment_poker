@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Bloom, EffectComposer, SMAA, Vignette } from '@react-three/postprocessing';
-import { Component, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, Suspense, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import * as THREE from 'three';
 import type { GameState } from '../practice/game/types';
 import type { GraphicsQuality } from '../settings/settings';
@@ -8,12 +8,12 @@ import { Avatars } from './avatars/Avatar';
 import { BG_COLOR, CasinoRoom } from './environment/CasinoRoom';
 import { Effects } from './fx/Effects';
 import type { FxBus } from './fxBus';
-import { QUALITY } from './layout';
+import { CAM_LOOK as CAM_LOOK_V, CAM_POS as CAM_POS_V, QUALITY } from './layout';
 import { SceneContext, useFx, useScene, type SceneData } from './sceneContext';
 import { Cards } from './table/Cards';
 import { TableChips } from './table/Chips';
 import { WoodTable } from './table/WoodTable';
-import { resetTextureCache } from './textures';
+import { useFontsReady } from './useFontsReady';
 
 interface Props {
   state: GameState;
@@ -24,31 +24,11 @@ interface Props {
   reduceMotion: boolean;
   quality: GraphicsQuality;
   onHeroCard?: (index: number) => void;
+  zoomHand?: boolean;
 }
 
-/** 캔버스 텍스처에 쓰는 폰트가 준비될 때까지 기다린다 */
-function useFontsReady() {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const fonts = document.fonts;
-    Promise.race([
-      Promise.all([fonts.load("72px 'Black Han Sans'"), fonts.load("20px 'Jua'")]),
-      new Promise((r) => setTimeout(r, 1500)),
-    ]).finally(() => {
-      if (!alive) return;
-      resetTextureCache();
-      setReady(true);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return ready;
-}
-
-const CAM_POS = new THREE.Vector3(0, 6.4, 7.0);
-const CAM_LOOK = new THREE.Vector3(0, 0.85, -0.5);
+const CAM_POS = new THREE.Vector3(...CAM_POS_V);
+const CAM_LOOK = new THREE.Vector3(...CAM_LOOK_V);
 
 function CameraRig() {
   const { reduceMotion, paused } = useScene();
@@ -124,6 +104,9 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
       layer.remove();
     };
   }, [htmlLayer, fontsReady]);
+  useLayoutEffect(() => {
+    htmlLayer.current.classList.toggle('is-dim', !!props.zoomHand);
+  }, [htmlLayer, props.zoomHand]);
   const ctx = useMemo<SceneData>(
     () => ({
       state: props.state,
@@ -134,8 +117,9 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
       busyUntil: props.busyUntil,
       htmlLayer,
       onHeroCard: props.onHeroCard,
+      zoomHand: props.zoomHand,
     }),
-    [props.state, props.bus, props.speed, props.reduceMotion, props.paused, props.busyUntil, props.onHeroCard, htmlLayer],
+    [props.state, props.bus, props.speed, props.reduceMotion, props.paused, props.busyUntil, props.onHeroCard, props.zoomHand, htmlLayer],
   );
   if (!fontsReady) return <div className="scene3d scene3d--loading" />;
   return (

@@ -15,6 +15,12 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+/* 패 확대 중에는 이름표·팟 라벨이 카드를 가리지 않게 흐리게 */
+.scene3d__html.is-dim {
+  opacity: 0.12;
 }
 
 .scene3d__html .seat3d,
