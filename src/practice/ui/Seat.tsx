@@ -20,7 +20,8 @@ export function Seat({ state, player, position, onCardClick }: Props) {
   const isTurn = state.phase === 'betting' && state.currentPlayer === player.id;
   const isWinner = state.phase === 'handOver' && state.result?.winnerIds.includes(player.id);
   const showAll = isHero || (state.phase === 'handOver' && state.result?.showdown && player.inHand && !player.folded);
-  const revealedIdx = state.revealed[player.id];
+  const revealedIdx = state.revealed[player.id] ?? [];
+  const forceAll = state.effects.forceRevealed.includes(player.id);
   const statusLabel = STATUS_LABEL[player.status];
   const net = state.phase === 'handOver' ? state.result?.net[player.id] : undefined;
 
@@ -35,15 +36,18 @@ export function Seat({ state, player, position, onCardClick }: Props) {
     <div className={classes.join(' ')} data-seat={player.seat}>
       <div className="seat-cards">
         {player.inHand &&
-          player.hole.map((c, i) => (
-            <PlayingCard
-              key={i}
-              card={c}
-              hidden={!showAll && revealedIdx !== i}
-              highlight={!isHero && revealedIdx === i && !showAll}
-              onClick={onCardClick ? () => onCardClick(i) : undefined}
-            />
-          ))}
+          player.hole.map((c, i) => {
+            const face = showAll || forceAll || revealedIdx.includes(i);
+            return (
+              <PlayingCard
+                key={c.id}
+                card={c}
+                hidden={!face}
+                highlight={!isHero && revealedIdx.includes(i) && !showAll}
+                onClick={onCardClick ? () => onCardClick(i) : undefined}
+              />
+            );
+          })}
       </div>
       <div className="seat-info">
         <div className="seat-name">

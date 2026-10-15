@@ -18,4 +18,21 @@ contextBridge.exposeInMainWorld('desktop', {
   openLogFolder: () => ipcRenderer.invoke('app:openLogFolder'),
   log: (level, message) => ipcRenderer.send('log:write', level, message),
   quit: () => ipcRenderer.invoke('app:quit'),
+  lanLocalAddresses: () => ipcRenderer.invoke('lan:localAddresses'),
+  lanStatus: () => ipcRenderer.invoke('lan:status'),
+  lanHostStart: (opts) => ipcRenderer.invoke('lan:hostStart', opts),
+  lanConnect: (opts) => ipcRenderer.invoke('lan:connect', opts),
+  lanSend: (peerId, msg) => ipcRenderer.invoke('lan:send', peerId, msg),
+  lanBroadcast: (msg, exceptPeerId) => ipcRenderer.invoke('lan:broadcast', msg, exceptPeerId),
+  lanShutdown: () => ipcRenderer.invoke('lan:shutdown'),
+  onLanMessage: (listener) => {
+    const handler = (_e, payload) => listener(payload);
+    ipcRenderer.on('lan:message', handler);
+    return () => ipcRenderer.removeListener('lan:message', handler);
+  },
+  onLanPeer: (listener) => {
+    const handler = (_e, payload) => listener(payload);
+    ipcRenderer.on('lan:peer', handler);
+    return () => ipcRenderer.removeListener('lan:peer', handler);
+  },
 });

@@ -194,12 +194,21 @@ export function RoomBrowserScreen({ initialMode }: { initialMode: RoomModeFilter
                 <Icon name={state.offline ? 'info' : 'close'} size={30} />
               </span>
               <p className="empty-state__title">
-                {state.offline ? '온라인 방 서비스에 연결되어 있지 않습니다' : '방 목록을 불러오지 못했습니다'}
+                {state.offline ? '공개 방 목록은 Steam 로비 연결 후 제공됩니다' : '방 목록을 불러오지 못했습니다'}
               </p>
-              <p className="empty-state__desc">{state.message}</p>
-              <Button icon="refresh" onClick={() => void refresh()}>
-                다시 시도
-              </Button>
+              <p className="empty-state__desc">
+                {state.offline
+                  ? '지금은 LAN으로 플레이하세요. 방을 만들거나, 방장 IP·코드로 입장할 수 있습니다.'
+                  : state.message}
+              </p>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Button icon="key" onClick={() => nav.openModal({ name: 'join-code' })}>
+                  코드로 입장
+                </Button>
+                <Button variant="primary" icon="plus" onClick={() => nav.openModal({ name: 'create-room' })}>
+                  방 만들기
+                </Button>
+              </div>
             </div>
           )}
 
@@ -209,12 +218,17 @@ export function RoomBrowserScreen({ initialMode }: { initialMode: RoomModeFilter
                 <Icon name="search" size={30} />
               </span>
               <p className="empty-state__title">
-                {state.rooms.length === 0 ? '열려 있는 방이 없습니다' : '조건에 맞는 방이 없습니다'}
+                {state.rooms.length === 0 ? '공개 LAN 목록은 없습니다' : '조건에 맞는 방이 없습니다'}
               </p>
-              <p className="empty-state__desc">직접 방을 만들고 친구를 초대해 보세요.</p>
-              <Button variant="primary" icon="plus" onClick={() => nav.openModal({ name: 'create-room' })}>
-                방 만들기
-              </Button>
+              <p className="empty-state__desc">방을 만들거나, 친구에게 받은 IP·방 코드로 입장하세요.</p>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Button icon="key" onClick={() => nav.openModal({ name: 'join-code' })}>
+                  코드로 입장
+                </Button>
+                <Button variant="primary" icon="plus" onClick={() => nav.openModal({ name: 'create-room' })}>
+                  방 만들기
+                </Button>
+              </div>
             </div>
           )}
 

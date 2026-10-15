@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { audio } from '../audio/audioEngine';
 import type { GameModeId } from '../core/gameModes';
 import type { RoomListing, RoomModeFilter } from '../net/types';
+import type { LanStartPayload } from '../lobby/lanRoomService';
 import type { PracticeOptions } from '../practice/game/botTable';
 
 export type RulesTab = 'holdem' | 'seven' | 'augment' | 'hands' | 'chips';
@@ -10,9 +11,12 @@ export type ScreenRoute =
   | { name: 'menu' }
   | { name: 'rooms'; mode: RoomModeFilter }
   | { name: 'rules'; tab: RulesTab }
+  | { name: 'augment-codex' }
   | { name: 'settings' }
   | { name: 'wallet' }
-  | { name: 'practice'; options: PracticeOptions };
+  | { name: 'practice'; options: PracticeOptions }
+  | { name: 'lobby' }
+  | { name: 'lan-table'; start: LanStartPayload; tableId: string };
 
 export type ModalRoute =
   | { name: 'create-room'; mode?: GameModeId }
@@ -81,7 +85,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setModals((m) => m.slice(0, -1));
   }, []);
 
+  const lastToast = useRef<{ message: string; at: number }>({ message: '', at: 0 });
   const toast = useCallback((message: string, tone: Toast['tone'] = 'default') => {
+    const now = Date.now();
+    // 2초 안 같은 문구 반복 차단 (StrictMode·이펙트 재실행)
+    if (lastToast.current.message === message && now - lastToast.current.at < 2000) return;
+    lastToast.current = { message, at: now };
     const id = nextKey.current++;
     if (tone === 'error') audio.play('error');
     setToasts((t) => [...t.slice(-2), { id, message, tone }]);

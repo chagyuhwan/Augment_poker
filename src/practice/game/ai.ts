@@ -1,6 +1,5 @@
-import { evalOptionsFor } from './augments';
-import { fullDeck, sameCard, shuffle } from './cards';
-import { byId, hasActive, isLive, legalActions, potSize } from './engine';
+import { fullDeck, sameFace, shuffle } from './cards';
+import { byId, isLive, legalActions, potSize } from './engine';
 import { compareScore, evaluate } from './evaluator';
 import type { Card, GameState, Player, PlayerAction } from './types';
 
@@ -13,8 +12,8 @@ function estimateEquity(s: GameState, me: Player): number {
   if (opponents === 0) return 1;
 
   const known: Card[] = [...me.hole, ...s.community];
-  const unknown = fullDeck().filter((c) => !known.some((k) => sameCard(k, c)));
-  const opts = evalOptionsFor(me.augments.filter((a) => hasActive(s, me, a.id)).map((a) => a.id));
+  // 기본 52장 얼굴 기준으로 남은 카드 추정(생성 카드는 희귀하므로 근사)
+  const unknown = fullDeck({ nextCardId: 1 }).filter((c) => !known.some((k) => sameFace(k, c)));
   const need = 5 - s.community.length;
 
   let score = 0;
@@ -22,7 +21,7 @@ function estimateEquity(s: GameState, me: Player): number {
     const deck = shuffle(unknown);
     const board = [...s.community, ...deck.slice(0, need)];
     let pos = need;
-    const mine = evaluate([...me.hole, ...board], opts).score;
+    const mine = evaluate([...me.hole, ...board]).score;
     let beaten = false;
     let ties = 0;
     for (let o = 0; o < opponents; o++) {
@@ -47,12 +46,7 @@ export function decideBotAction(s: GameState): PlayerAction {
   const pot = potSize(s);
   const opponents = s.players.filter((p) => isLive(p) && p.id !== me.id).length;
 
-  let equity = estimateEquity(s, me);
-
-  // 위압: 위압을 가진 플레이어가 마지막 공격자면 더 쉽게 접는다
-  const aggressor = s.lastAggressor === null ? undefined : byId(s, s.lastAggressor);
-  if (aggressor && aggressor.id !== me.id && hasActive(s, aggressor, 'intimidate')) equity -= 0.12;
-
+  const equity = estimateEquity(s, me);
   const fair = 1 / (opponents + 1);
   const strong = Math.min(0.8, fair * 2.2);
   const decent = Math.min(0.6, fair * 1.5);
@@ -68,7 +62,7 @@ export function decideBotAction(s: GameState): PlayerAction {
   if (canRaise) {
     if (equity > strong) return raiseTo(0.6 + Math.random() * 0.6);
     if (equity > decent && r < 0.3) return raiseTo(0.4 + Math.random() * 0.3);
-    if (legal.toCall === 0 && r < 0.07) return raiseTo(0.5); // 블러프
+    if (legal.toCall === 0 && r < 0.07) return raiseTo(0.5);
   }
 
   if (legal.toCall === 0) return { type: 'check' };

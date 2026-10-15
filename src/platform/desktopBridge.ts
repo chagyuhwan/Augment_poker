@@ -41,6 +41,27 @@ interface DesktopApi {
   openLogFolder(): Promise<void>;
   log(level: LogLevel, message: string): void;
   quit(): Promise<void>;
+  lanLocalAddresses(): Promise<string[]>;
+  lanStatus(): Promise<{
+    role: 'idle' | 'host' | 'guest';
+    port: number;
+    addresses: string[];
+    peerCount: number;
+    connected: boolean;
+  }>;
+  lanHostStart(opts?: { port?: number }): Promise<
+    | { ok: true; port: number; addresses: string[]; role: 'host' }
+    | { ok: false; error: string }
+  >;
+  lanConnect(opts: { host: string; port?: number }): Promise<
+    | { ok: true; port: number; host: string; role: 'guest' }
+    | { ok: false; error: string }
+  >;
+  lanSend(peerId: string, msg: unknown): Promise<boolean>;
+  lanBroadcast(msg: unknown, exceptPeerId?: string | null): Promise<number>;
+  lanShutdown(): Promise<{ ok: true }>;
+  onLanMessage(listener: (payload: { from: string; msg: unknown }) => void): () => void;
+  onLanPeer(listener: (payload: { type: 'connected' | 'disconnected'; peerId: string }) => void): () => void;
 }
 
 declare global {
@@ -124,5 +145,72 @@ export const bridge = {
   async quit(): Promise<void> {
     if (desktop) await desktop.quit();
     else window.close();
+  },
+
+  async lanLocalAddresses(): Promise<string[]> {
+    if (desktop) return desktop.lanLocalAddresses();
+    return [];
+  },
+
+  async lanStatus() {
+    if (desktop) return desktop.lanStatus();
+    return { role: 'idle' as const, port: 17845, addresses: [], peerCount: 0, connected: false };
+  },
+
+  async lanHostStart(opts?: { port?: number }) {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (!api?.lanHostStart) {
+      return {
+        ok: false as const,
+        error: 'LAN API가 없습니다. Electron을 재시작해 주세요.',
+      };
+    }
+    try {
+      return await api.lanHostStart(opts);
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  async lanConnect(opts: { host: string; port?: number }) {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (!api?.lanConnect) {
+      return { ok: false as const, error: 'LAN API가 없습니다. Electron을 재시작해 주세요.' };
+    }
+    try {
+      return await api.lanConnect(opts);
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  async lanSend(peerId: string, msg: unknown) {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (!api?.lanSend) return false;
+    return api.lanSend(peerId, msg);
+  },
+
+  async lanBroadcast(msg: unknown, exceptPeerId?: string | null) {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (!api?.lanBroadcast) return 0;
+    return api.lanBroadcast(msg, exceptPeerId);
+  },
+
+  async lanShutdown() {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (api?.lanShutdown) return api.lanShutdown();
+    return { ok: true as const };
+  },
+
+  onLanMessage(listener: (payload: { from: string; msg: unknown }) => void): () => void {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (api?.onLanMessage) return api.onLanMessage(listener);
+    return () => {};
+  },
+
+  onLanPeer(listener: (payload: { type: 'connected' | 'disconnected'; peerId: string }) => void): () => void {
+    const api = typeof window !== 'undefined' ? window.desktop : desktop;
+    if (api?.onLanPeer) return api.onLanPeer(listener);
+    return () => {};
   },
 };

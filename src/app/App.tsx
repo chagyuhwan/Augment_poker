@@ -1,5 +1,8 @@
 import { useEffect } from 'react';
 import { UI_SCALE_FACTOR } from '../settings/settings';
+import { AugmentCodexScreen } from '../ui/screens/AugmentCodexScreen';
+import { LanTableScreen } from '../ui/screens/LanTableScreen';
+import { LobbyScreen } from '../ui/screens/LobbyScreen';
 import { MainMenuScreen } from '../ui/screens/MainMenuScreen';
 import { PracticeScreen } from '../ui/screens/PracticeScreen';
 import { RoomBrowserScreen } from '../ui/screens/RoomBrowserScreen';
@@ -28,12 +31,18 @@ function renderScreen(route: ScreenRoute) {
       return <RoomBrowserScreen initialMode={route.mode} />;
     case 'rules':
       return <RulesScreen initialTab={route.tab} />;
+    case 'augment-codex':
+      return <AugmentCodexScreen />;
     case 'settings':
       return <SettingsScreen />;
     case 'practice':
       return <PracticeScreen options={route.options} />;
     case 'wallet':
       return <WalletScreen />;
+    case 'lobby':
+      return <LobbyScreen />;
+    case 'lan-table':
+      return <LanTableScreen start={route.start} tableId={route.tableId} />;
   }
 }
 
@@ -59,7 +68,7 @@ function renderModal(route: ModalRoute) {
 function Shell() {
   const nav = useNavigation();
   const { settings, update } = useSettings();
-  const inPractice = nav.screen.name === 'practice';
+  const inPractice = nav.screen.name === 'practice' || nav.screen.name === 'lan-table';
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

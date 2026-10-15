@@ -4,21 +4,18 @@ import { AUGMENTS, KIND_LABEL, MAX_AUGMENT_SLOTS, TIER_LABEL } from '../game/aug
 import {
   act,
   byId,
-  canSeeNextCard,
-  canUseFateTwist,
-  canUseMulligan,
+  canUseAugment,
   chooseAugment,
   extendAugmentDeadline,
   type EngineResult,
-  mulliganCard,
-  peekNextCard,
+  invokeAugment,
+  peekForesight,
   potSize,
-  rerollAugmentSlot,
-  rerollAugments,
   tickTimeouts,
-  twistFate,
+  type AugmentPayload,
 } from '../game/engine';
-import type { AugmentId, GameState } from '../game/types';
+import type { AugmentId, GameState, Suit } from '../game/types';
+import type { LanActionRequest } from '../../net/lanProtocol';
 import { useSettings } from '../../app/settingsContext';
 import { audio } from '../../audio/audioEngine';
 import { canUseWebGL } from '../../scene3d/webgl';
@@ -32,9 +29,6 @@ import { EmptySeat, Seat } from './Seat';
 
 /** 시계 방향 배치. 본인 좌석이 항상 bottom */
 const POSITIONS = ['bottom', 'left', 'top-left', 'top', 'top-right', 'right'];
-
-/** 카드를 나눠 줄 때 발동하므로 얻은 판에는 효과가 없는 증강 */
-const DEAL_TIME_AUGMENTS = new Set<AugmentId>(['clairvoyance', 'tax', 'thirdHand']);
 
 const TableScene = lazy(() => import('../../scene3d/TableScene').then((m) => ({ default: m.TableScene })));
 
@@ -52,9 +46,24 @@ interface Props {
   halted: boolean;
   onPause: () => void;
   onLeave: () => void;
+  /** remote: 엔진은 호스트. 봇·타임아웃·다음 판은 돌리지 않고 액션만 전송 */
+  sync?: 'local' | 'remote';
+  onRemoteAction?: (request: LanActionRequest) => void;
 }
 
-export function GameScreen({ state, setState, botDelay, paused, nextHand, halted, onPause, onLeave }: Props) {
+export function GameScreen({
+  state,
+  setState,
+  botDelay,
+  paused,
+  nextHand,
+  halted,
+  onPause,
+  onLeave,
+  sync = 'local',
+  onRemoteAction,
+}: Props) {
+  const remote = sync === 'remote';
   const logRef = useRef<HTMLDivElement>(null);
   const errorRef = useRef<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -63,6 +72,9 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
   const pausedAt = useRef<number | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [zoomHand, setZoomHand] = useState(false);
+  /** 사용 대기 중인 증강 (대상/카드 선택) */
+  const [pendingAug, setPendingAug] = useState<AugmentId | null>(null);
+  const pendingSuit: Suit = 's';
   const { settings } = useSettings();
   const use3d = canUseWebGL();
   const speed = ANIMATION_SPEED_FACTOR[settings.animationSpeed] * (settings.reduceMotion ? 0.6 : 1);
@@ -77,6 +89,13 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
       return r.ok ? r.state : s;
     });
   const update = (fn: (s: GameState) => GameState) => setState(fn);
+  const remoteOrRun = (request: LanActionRequest, fn: (s: GameState) => EngineResult) => {
+    if (remote && onRemoteAction) {
+      onRemoteAction(request);
+      return;
+    }
+    run(fn);
+  };
 
   useEffect(() => {
     if (!errorRef.current) return;
@@ -88,7 +107,7 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
 
   // 봇 차례
   useEffect(() => {
-    if (paused || state.phase !== 'betting') return;
+    if (remote || paused || state.phase !== 'betting') return;
     const cur = byId(state, state.currentPlayer);
     if (!cur || cur.isHuman) return;
     const timer = setTimeout(() => {
@@ -99,7 +118,7 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
       });
     }, Math.max(botDelay, busyLeft() + 150));
     return () => clearTimeout(timer);
-  }, [state, paused, botDelay]);
+  }, [state, paused, botDelay, remote]);
 
   // 테이블에 있는 동안 카지노 배경음
   useEffect(() => {
@@ -109,13 +128,14 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
 
   // 증강 선택 제한시간 / 재접속 유예
   useEffect(() => {
-    if (paused) return;
+    if (remote || paused) return;
     const t = setInterval(() => update((s) => tickTimeouts(s)), 250);
     return () => clearInterval(t);
-  }, [paused]);
+  }, [paused, remote]);
 
   // 일시정지한 시간만큼 증강 제한시간을 늘린다
   useEffect(() => {
+    if (remote) return;
     if (paused) {
       pausedAt.current = Date.now();
       return;
@@ -126,19 +146,20 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
       update((s) => extendAugmentDeadline(s, ms));
       setNextAt((t) => (t === null ? t : t + ms));
     }
-  }, [paused]);
+  }, [paused, remote]);
 
   // 판이 끝나면 잠시 결과를 보여 주고 자동으로 다음 판
   useEffect(() => {
-    if (state.phase !== 'handOver' || halted) {
-      setNextAt(null);
+    if (remote || state.phase !== 'handOver' || halted) {
+      if (remote) setNextAt(null);
+      else if (state.phase !== 'handOver' || halted) setNextAt(null);
       return;
     }
     setNextAt(Date.now() + NEXT_HAND_MS + busyLeft());
-  }, [state.phase, state.handNumber, halted]);
+  }, [state.phase, state.handNumber, halted, remote]);
 
   useEffect(() => {
-    if (nextAt === null || paused) return;
+    if (remote || nextAt === null || paused) return;
     const t = setInterval(() => {
       const n = Date.now();
       setNow(n);
@@ -148,21 +169,21 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
       }
     }, 200);
     return () => clearInterval(t);
-  }, [nextAt, paused, nextHand]);
+  }, [nextAt, paused, nextHand, remote]);
 
   // 혼자 남으면 다른 플레이어가 앉을 때까지 대기
   useEffect(() => {
-    if (state.phase !== 'waiting' || paused || halted) return;
+    if (remote || state.phase !== 'waiting' || paused || halted) return;
     const t = setTimeout(() => update(nextHand), WAITING_RETRY_MS);
     return () => clearTimeout(t);
-  }, [state, paused, halted, nextHand]);
+  }, [state, paused, halted, nextHand, remote]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [state.log.length]);
 
   useEffect(() => {
-    if (paused || state.phase !== 'handOver' || halted) return;
+    if (remote || paused || state.phase !== 'handOver' || halted) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.code === 'Space' || e.code === 'Enter') {
         e.preventDefault();
@@ -172,7 +193,7 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state.phase, paused, halted, nextHand]);
+  }, [state.phase, paused, halted, nextHand, remote]);
 
   // Q를 누르고 있는 동안 내 패를 화면 앞으로 크게 당긴다
   useEffect(() => {
@@ -199,13 +220,29 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
   const heroSeat = me?.seat ?? 0;
   const canZoom = !!me && me.inHand && !me.folded && me.hole.length > 0;
   const augmented = state.mode === 'augmented';
-  const mulliganReady = canUseMulligan(state);
-  const nextCard = canSeeNextCard(state) ? peekNextCard(state) : null;
+  const foresight = peekForesight(state);
   const bySeat = new Map(state.players.map((p) => [p.seat, p]));
   const nextIn = nextAt === null ? null : Math.max(0, Math.ceil((nextAt - now) / 1000));
   const waitingFor = state.players.filter((p) => p.status !== 'busted' && p.status !== 'leaving').length;
 
-  const onHeroCard = mulliganReady ? (idx: number) => update((s) => mulliganCard(s, idx)) : undefined;
+  const applyAug = (id: AugmentId, payload: AugmentPayload) => {
+    remoteOrRun({ kind: 'invokeAugment', id, payload }, (s) => invokeAugment(s, id, payload));
+    setPendingAug(null);
+  };
+
+  const onHeroCard =
+    pendingAug && me
+      ? (idx: number) => {
+          const def = AUGMENTS[pendingAug];
+          if (def.target === 'selfHole') applyAug(pendingAug, { type: 'hole', index: idx });
+          else if (def.target === 'selfHoleDelta') applyAug(pendingAug, { type: 'rankNudge', index: idx, delta: 1 });
+          else if (def.target === 'selfHoleSuit') applyAug(pendingAug, { type: 'suitUnify', indices: [idx], suit: pendingSuit });
+          else if (def.target === 'opponentSwap') {
+            const opp = state.players.find((p) => p.id !== me.id && p.inHand && !p.folded);
+            if (opp) applyAug(pendingAug, { type: 'swap', targetId: opp.id, myIndex: idx });
+          }
+        }
+      : undefined;
 
   const augmentSlots = augmented && me && (
     <div className="my-augments">
@@ -213,24 +250,64 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
         const o = me.augments[i];
         if (!o) return <div key={`slot-${i}`} className="my-augment is-empty" title="빈 증강 슬롯" />;
         const a = AUGMENTS[o.id];
-        const pending = o.acquiredHand === state.handNumber && DEAL_TIME_AUGMENTS.has(o.id);
+        if (!a) return <div key={`slot-${i}`} className="my-augment is-empty" title="알 수 없는 증강" />;
+        const usable = canUseAugment(state, me.id, o.id);
         return (
           <div
-            key={o.id}
-            className={`my-augment tier-${a.tier}${pending ? ' is-pending' : ''}`}
-            title={`${a.name} · ${TIER_LABEL[a.tier]} · ${KIND_LABEL[a.kind]}${pending ? ' · 다음 판부터' : ''}\n${a.description}`}
+            key={`${o.id}-${i}`}
+            className={`my-augment tier-${a.tier}${o.used ? ' is-pending' : ''}${pendingAug === o.id ? ' is-pending' : ''}${usable.ok ? ' is-usable' : ''}`}
+            title={`${a.name} · ${TIER_LABEL[a.tier]} · ${KIND_LABEL[a.kind]}\n${a.description}${usable.ok ? '' : `\n(${usable.reason})`}`}
           >
             <span className="my-augment-icon">{a.icon}</span>
-            <span className="my-augment-title">{a.name}</span>
-            {o.id === 'mulligan' && mulliganReady && <span className="hint">카드 클릭</span>}
-            {o.id === 'fateTwist' && canUseFateTwist(state) && (
-              <button type="button" className="pbtn tiny" onClick={() => update((s) => twistFate(s))}>
-                버리기
+            <span className="my-augment-text">
+              <span className="my-augment-title">{a.name}</span>
+              <span className="my-augment-desc">{a.description}</span>
+            </span>
+            {usable.ok && a.target === 'none' && (
+              <button type="button" className="pbtn tiny" onClick={() => applyAug(o.id, { type: 'none' })}>
+                사용
+              </button>
+            )}
+            {usable.ok && a.target !== 'none' && a.target !== 'opponent' && a.target !== 'opponentHand' && a.target !== 'board' && (
+              <button type="button" className="pbtn tiny" onClick={() => setPendingAug(pendingAug === o.id ? null : o.id)}>
+                {pendingAug === o.id ? '취소' : '카드 선택'}
+              </button>
+            )}
+            {usable.ok && (a.target === 'opponent' || a.target === 'opponentHand' || a.target === 'board') && (
+              <button
+                type="button"
+                className="pbtn tiny"
+                onClick={() => {
+                  if (a.target === 'board' && state.community.length) {
+                    applyAug(o.id, { type: 'board', index: 0 });
+                    return;
+                  }
+                  const opp = state.players.find((p) => p.id !== me.id && p.inHand && !p.folded);
+                  if (!opp) return;
+                  if (a.target === 'opponentHand') applyAug(o.id, { type: 'handFlip', targetId: opp.id });
+                  else applyAug(o.id, { type: 'target', playerId: opp.id });
+                }}
+              >
+                사용
               </button>
             )}
           </div>
         );
       })}
+      {pendingAug && <span className="hint">내 패를 클릭하세요</span>}
+      {foresight && (
+        <div className="hud-pill hud-pill--aug">
+          🔮 예지 <PlayingCard card={{ id: -1, rank: foresight.rank, suit: foresight.suit }} small />
+        </div>
+      )}
+      {state.effects.auraHints[me.id] && <div className="hud-pill">{state.effects.auraHints[me.id]}</div>}
+      {state.effects.privatePeeks
+        .filter((p) => p.viewerId === me.id)
+        .map((p) => (
+          <div key={p.cardId} className="hud-pill hud-pill--aug">
+            👁️ 엿봄 <PlayingCard card={{ id: p.cardId, rank: p.rank, suit: p.suit }} small />
+          </div>
+        ))}
     </div>
   );
 
@@ -240,7 +317,7 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
         {state.result.lines.map((l, i) => (
           <div key={i}>{l}</div>
         ))}
-        {!halted && (
+        {!halted && !remote && (
           <button
             type="button"
             className="pbtn raise"
@@ -252,9 +329,16 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
             다음 판 {nextIn !== null ? `${nextIn}초` : ''} <span className="key-hint">Space</span>
           </button>
         )}
+        {remote && state.phase === 'handOver' && <div className="hint">방장이 다음 판을 진행합니다…</div>}
       </div>
     ) : (
-      <ActionPanel state={state} paused={paused} onAction={(a, seq) => run((s) => act(s, s.heroId, a, seq))} />
+      <ActionPanel
+        state={state}
+        paused={paused}
+        onAction={(a, seq) =>
+          remoteOrRun({ kind: 'act', action: a, actionSeq: seq }, (s) => act(s, s.heroId, a, seq))
+        }
+      />
     );
 
   const augmentPicker = state.phase === 'augment' && state.augmentRound && (
@@ -262,9 +346,9 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
       key={`${state.handNumber}-${state.augmentRound.round}`}
       state={state}
       paused={paused}
-      onChoose={(pick, replace) => run((s) => chooseAugment(s, s.heroId, pick, replace))}
-      onRerollAll={() => run((s) => rerollAugments(s, s.heroId))}
-      onRerollSlot={(i) => run((s) => rerollAugmentSlot(s, s.heroId, i))}
+      onChoose={(pick, replace) =>
+        remoteOrRun({ kind: 'chooseAugment', pick, replace }, (s) => chooseAugment(s, s.heroId, pick, replace))
+      }
     />
   );
 
@@ -329,11 +413,6 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
         </header>
 
         <div className="hud-center">
-          {nextCard && (
-            <div className="hud-pill hud-pill--aug">
-              🔮 다음 카드 <PlayingCard card={nextCard} small />
-            </div>
-          )}
           {state.phase === 'waiting' && <div className="hud-pill">{waitingFor < 2 ? '플레이어 기다리는 중…' : '곧 시작합니다…'}</div>}
         </div>
 
@@ -406,11 +485,6 @@ export function GameScreen({ state, setState, botDelay, paused, nextHand, halted
       <main className="layout">
         <section className="table-area">
           {table2d}
-          {nextCard && (
-            <div className="next-card">
-              🔮 다음 카드 <PlayingCard card={nextCard} small />
-            </div>
-          )}
           {state.phase === 'waiting' && (
             <div className="table-waiting">{waitingFor < 2 ? '다른 플레이어를 기다리는 중…' : '곧 다음 판을 시작합니다…'}</div>
           )}

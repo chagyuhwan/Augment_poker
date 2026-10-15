@@ -1267,11 +1267,42 @@
   border-radius: 8px;
   border: 1px solid var(--tier);
   color: #efe8d8;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.aug-owned-bar__slot.tier-silver {
+  --tier: rgba(192, 199, 209, 0.7);
+}
+.aug-owned-bar__slot.tier-gold {
+  --tier: rgba(201, 168, 92, 0.85);
+}
+.aug-owned-bar__slot.tier-prismatic {
+  --tier: rgba(180, 156, 255, 0.9);
 }
 
 .aug-owned-bar__slot.is-empty {
   border-style: dashed;
   color: rgba(232, 227, 214, 0.45);
+}
+
+.aug-owned-bar__label {
+  margin-right: 4px;
+}
+
+.aug-stage__wait {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #efe8d8;
+}
+
+.aug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
 }
 
 .aug-wait {

@@ -1,4 +1,11 @@
-﻿import { AUGMENTS, MAX_AUGMENT_SLOTS, TIER_LABEL, evalOptionsFor, rollOffer, rollReplacement, rollTier } from './augments';
+﻿import {
+  applyRerollFatePick,
+  canUseAugment,
+  onStreetEndClearEffects,
+  useAugment as useAugmentImpl,
+  type AugmentPayload,
+} from './augmentActions';
+import { AUGMENTS, emptyEffects, MAX_AUGMENT_SLOTS, TIER_LABEL, rollOffer, rollTier } from './augments';
 import { cardLabel, fullDeck, shuffle } from './cards';
 import { compareScore, evaluate } from './evaluator';
 import type {
@@ -14,7 +21,8 @@ import type {
 
 export const MAX_SEATS = 6;
 export const AUGMENT_PICK_MS = 15_000;
-export const REROLLS_PER_PICK = 1;
+/** 레거시: 슬롯 단위 리롤은 제거. 운명 재추첨 증강으로 대체 */
+export const REROLLS_PER_PICK = 0;
 /** 연결이 끊긴 플레이어가 다시 접속할 수 있는 시간 */
 export const RECONNECT_GRACE_MS = 30_000;
 
@@ -88,7 +96,7 @@ function putChips(p: Player, amount: number) {
 // ── 증강 보유 ──
 
 export function owns(p: Player, id: AugmentId): boolean {
-  return p.augments.some((a) => a.id === id);
+  return p.augments.some((a) => a.id === id && !a.used);
 }
 
 /** 이번 핸드에 효과를 낼 수 있는 증강인지. 폴드했거나 일반 모드면 false */
@@ -96,20 +104,14 @@ export function hasActive(s: GameState, p: Player, id: AugmentId): boolean {
   return s.mode === 'augmented' && isLive(p) && owns(p, id);
 }
 
-/** 판이 시작될 때 발동하는 효과(카드 지급/징수)는 이전 판까지 획득한 증강만 */
-function hasAtDeal(s: GameState, p: Player, id: AugmentId): boolean {
-  return s.mode === 'augmented' && p.inHand && p.augments.some((a) => a.id === id && a.acquiredHand < s.handNumber);
-}
-
-function consume(s: GameState, p: Player, id: AugmentId) {
-  if (AUGMENTS[id].kind !== 'oneShot') return;
-  p.augments = p.augments.filter((a) => a.id !== id);
-  pushLog(s, `⌛ ${p.name}: 일회용 증강 [${AUGMENTS[id].name}] 소멸`);
-}
-
-function activeIds(s: GameState, p: Player): AugmentId[] {
-  return p.augments.filter((a) => hasActive(s, p, a.id)).map((a) => a.id);
-}
+const augmentCtx = {
+  byId,
+  isLive,
+  clone,
+  pushLog,
+  emit: (s: GameState, e: { type: 'augmentUsed'; playerId: number; augmentId: AugmentId; blocked?: boolean }) =>
+    emit(s, e),
+};
 
 // ── 테이블 생성 / 착석 ──
 
@@ -145,6 +147,7 @@ export function createTable(o: CreateTableOptions, now = Date.now()): GameState 
     heroId: 0,
     maxSeats: Math.min(MAX_SEATS, Math.max(2, o.maxSeats ?? MAX_SEATS)),
     nextPlayerId: 0,
+    nextCardId: 1,
     players: [],
     deck: [],
     community: [],
@@ -166,6 +169,7 @@ export function createTable(o: CreateTableOptions, now = Date.now()): GameState 
     augmentRoundsDone: 0,
     runout: false,
     revealed: {},
+    effects: emptyEffects(),
     result: null,
     events: [],
     eventSeq: 0,
@@ -236,6 +240,7 @@ function resetHandFields(s: GameState) {
   s.raisesThisStreet = 0;
   s.lastAggressor = null;
   s.revealed = {};
+  s.effects = emptyEffects();
   s.result = null;
   s.currentPlayer = -1;
   s.augmentRound = null;
@@ -250,6 +255,8 @@ function resetHandFields(s: GameState) {
     p.allIn = false;
     p.hasActed = false;
     p.lastAction = null;
+    // 증강은 판이 바뀌면 전부 초기화
+    p.augments = [];
   }
 }
 
@@ -280,33 +287,9 @@ export function startHand(prev: GameState, now = Date.now()): GameState {
   s.dealerSeat = nextPlayer(s, s.dealerSeat, (p) => p.inHand)!.seat;
   pushLog(s, `━━ 핸드 #${s.handNumber} (블라인드 ${s.sb}/${s.bb}) ━━`);
 
-  // 징수: 이전 판까지 얻은 증강만. 상대 칩이 빅 블라인드 2배 이하이면 걷지 않는다.
-  for (const taxer of eligible) {
-    if (!hasAtDeal(s, taxer, 'tax')) continue;
-    let collected = 0;
-    for (const p of eligible) {
-      if (p.id === taxer.id || p.chips <= s.bb * 2) continue;
-      p.chips -= s.bb;
-      collected += s.bb;
-    }
-    taxer.chips += collected;
-    pushLog(s, `🏦 ${taxer.name}이(가) ${collected}칩을 징수했습니다.`);
-    consume(s, taxer, 'tax');
-  }
-
-  s.deck = shuffle(fullDeck());
+  s.deck = shuffle(fullDeck(s));
   for (const p of eligible) {
-    const third = hasAtDeal(s, p, 'thirdHand');
-    p.hole = s.deck.splice(-(third ? 3 : 2), third ? 3 : 2);
-    if (third) consume(s, p, 'thirdHand');
-  }
-  for (const viewer of eligible) {
-    if (!hasAtDeal(s, viewer, 'clairvoyance')) continue;
-    // 투시는 화면을 보는 플레이어에게만 의미가 있다(상대의 공개 정보는 본인에게만 보여야 한다)
-    if (viewer.id === s.heroId) {
-      for (const p of eligible) if (p.id !== viewer.id) s.revealed[p.id] = Math.floor(Math.random() * p.hole.length);
-    }
-    consume(s, viewer, 'clairvoyance');
+    p.hole = s.deck.splice(-2, 2);
   }
 
   // 1:1이면 딜러가 스몰 블라인드
@@ -346,10 +329,18 @@ export function legalActions(s: GameState, p: Player): LegalActions {
   const allInTo = p.bet + p.chips;
   const capTo = s.maxBet === null ? allInTo : Math.min(allInTo, s.currentBet + s.maxBet);
   const minRaiseTo = Math.min(s.currentBet + s.minRaise, capTo);
+  const banned = s.effects.raiseBannedUntil[p.id];
+  const raiseSealed = banned === s.street || banned === 'done';
+  const capHit = s.effects.raiseCapStreet === s.street && s.effects.raisesUnderCap >= 1;
+  // 봉인/제한 시: 기존 베팅 이하 올인 콜만 허용(레이즈로 올리는 올인 불가)
+  let canRaise = capTo > s.currentBet && !raiseSealed && !capHit;
+  if (raiseSealed && toCall > 0 && allInTo <= s.currentBet) {
+    // 올인 콜은 call로 처리되므로 canRaise는 false 유지
+  }
   return {
     toCall,
     canCheck: toCall === 0,
-    canRaise: capTo > s.currentBet,
+    canRaise,
     minRaiseTo,
     maxRaiseTo: capTo,
     allInTo,
@@ -373,12 +364,6 @@ export function act(prev: GameState, playerId: number, action: PlayerAction, seq
 
   switch (action.type) {
     case 'fold': {
-      if (hasActive(s, p, 'retreat') && p.totalBet > 0) {
-        const refund = Math.floor(p.totalBet * 0.5);
-        p.chips += refund;
-        s.minted += refund;
-        pushLog(s, `🏳️ ${p.name}: 전략적 후퇴로 ${refund}칩 회수`);
-      }
       p.folded = true;
       p.lastAction = '폴드';
       pushLog(s, `${p.name}: 폴드`);
@@ -398,6 +383,27 @@ export function act(prev: GameState, playerId: number, action: PlayerAction, seq
         const amt = putChips(p, legal.toCall);
         p.lastAction = p.allIn ? `올인 ${p.bet}` : `콜 ${amt}`;
         pushLog(s, `${p.name}: ${p.allIn ? '올인' : '콜'} ${amt}`);
+        // 심리 압박: 지정 상대가 레이즈에 콜하면 카드 한 장 공개
+        const pr = s.effects.pressure;
+        if (pr && !pr.fired && pr.armed && pr.targetId === p.id && s.lastAggressor === pr.ownerId) {
+          const idx = Math.floor(Math.random() * p.hole.length);
+          if (p.hole[idx]) {
+            s.effects.privatePeeks.push({
+              viewerId: pr.ownerId,
+              targetId: p.id,
+              cardId: p.hole[idx].id,
+              rank: p.hole[idx].rank,
+              suit: p.hole[idx].suit,
+            });
+            pr.fired = true;
+            const owner = byId(s, pr.ownerId);
+            if (owner) {
+              const aug = owner.augments.find((a) => a.id === 'pressure' && !a.used);
+              if (aug) aug.used = true;
+            }
+            pushLog(s, `😠 심리 압박: ${p.name}의 카드 한 장이 공개됨`);
+          }
+        }
       }
       break;
     }
@@ -406,11 +412,10 @@ export function act(prev: GameState, playerId: number, action: PlayerAction, seq
       if (!Number.isSafeInteger(target)) return { ok: false, error: '베팅 금액이 올바르지 않습니다.' };
       if (target > legal.allInTo) return { ok: false, error: '보유한 칩보다 많이 걸 수 없습니다.' };
       if (target <= s.currentBet) {
-        // 콜할 칩도 모자라 전부 거는 경우는 올인 콜로 처리
         if (target === legal.allInTo) return act(prev, playerId, { type: 'call' }, seq, now);
         return { ok: false, error: '현재 베팅보다 높게 걸어야 합니다.' };
       }
-      if (!legal.canRaise || target > legal.maxRaiseTo) return { ok: false, error: '최대 베팅 금액을 넘었습니다.' };
+      if (!legal.canRaise || target > legal.maxRaiseTo) return { ok: false, error: '레이즈할 수 없습니다.' };
       if (target < legal.minRaiseTo && target !== legal.allInTo) {
         return { ok: false, error: `최소 ${legal.minRaiseTo}까지 올려야 합니다.` };
       }
@@ -423,6 +428,7 @@ export function act(prev: GameState, playerId: number, action: PlayerAction, seq
       }
       s.currentBet = target;
       s.raisesThisStreet += 1;
+      if (s.effects.raiseCapStreet === s.street) s.effects.raisesUnderCap += 1;
       s.lastAggressor = p.id;
       const label = p.allIn ? '올인' : wasBet ? '베팅' : '레이즈';
       p.lastAction = `${label} ${target}`;
@@ -463,7 +469,18 @@ function advance(s: GameState, now: number) {
     return;
   }
 
-  s.currentPlayer = nextPlayer(s, seatOf(s, s.currentPlayer), canAct)!.id;
+  // 순서 조작: actLast 플레이어는 다른 사람이 모두 행동한 뒤에만 차례
+  const actLast = s.effects.actLastId;
+  const actStreet = s.effects.actLastStreet;
+  const next = nextPlayer(s, seatOf(s, s.currentPlayer), (p) => {
+    if (!canAct(p)) return false;
+    if (actLast !== null && actStreet === s.street && p.id === actLast) {
+      const others = actors.filter((o) => o.id !== actLast);
+      return others.every((o) => o.hasActed && o.bet === s.currentBet);
+    }
+    return true;
+  });
+  s.currentPlayer = (next ?? nextPlayer(s, seatOf(s, s.currentPlayer), canAct))!.id;
 }
 
 function dealCommunity(s: GameState, n: number) {
@@ -502,12 +519,14 @@ function augmentPickDue(s: GameState): boolean {
 }
 
 function nextStreet(s: GameState, now: number) {
+  const ended = s.street;
   resetStreet(s);
+  onStreetEndClearEffects(s, ended);
   if (augmentPickDue(s)) {
     openAugmentRound(s, now);
     return;
   }
-  if (s.street === 'river') {
+  if (ended === 'river') {
     showdown(s);
     return;
   }
@@ -524,7 +543,13 @@ function startBettingRound(s: GameState, now: number) {
     continueRunout(s, now);
     return;
   }
-  s.currentPlayer = nextPlayer(s, s.dealerSeat, canAct)!.id;
+  const actLast = s.effects.actLastId;
+  const skipLast = actLast !== null && s.effects.actLastStreet === s.street;
+  s.currentPlayer = nextPlayer(
+    s,
+    s.dealerSeat,
+    (p) => canAct(p) && !(skipLast && p.id === actLast),
+  )!.id;
 }
 
 /** 더 베팅할 사람이 없을 때 남은 카드를 깐다. 증강 선택 시점에서는 멈춘다. */
@@ -549,10 +574,10 @@ function openAugmentRound(s: GameState, now: number) {
   const tier = rollTier();
   const entries: AugmentRound['entries'] = {};
   for (const p of s.players) {
-    if (!p.inHand || p.status === 'leaving') continue;
+    if (!isLive(p) || p.status === 'leaving') continue;
     entries[p.id] = {
-      offer: rollOffer(tier, p.augments.map((a) => a.id), 3, !p.isHuman),
-      rerolls: REROLLS_PER_PICK,
+      offer: rollOffer(tier, p.augments.map((a) => a.id), 3, !p.isHuman, Math.random, round, true),
+      rerolled: false,
       done: false,
     };
   }
@@ -568,89 +593,70 @@ function openAugmentRound(s: GameState, now: number) {
   maybeFinishAugmentRound(s, now);
 }
 
-function addAugment(s: GameState, p: Player, pick: AugmentId, replace: AugmentId | null) {
-  if (replace) {
-    p.augments = p.augments.filter((a) => a.id !== replace);
-    pushLog(s, `♻️ ${p.name}: [${AUGMENTS[replace].name}] → [${AUGMENTS[pick].name}] 교체`);
-  } else {
-    pushLog(s, `✨ ${p.name}: [${TIER_LABEL[AUGMENTS[pick].tier]}] ${AUGMENTS[pick].name} 획득`);
-  }
-  p.augments.push({ id: pick, acquiredHand: s.handNumber });
+function addAugment(s: GameState, p: Player, pick: AugmentId) {
+  p.augments.push({ id: pick, used: false });
+  pushLog(s, `✨ ${p.name}: [${TIER_LABEL[AUGMENTS[pick].tier]}] ${AUGMENTS[pick].name} 획득`);
+  emit(s, { type: 'augmentPicked', playerId: p.id, augmentId: pick });
 }
 
 function botPick(s: GameState, p: Player) {
   const entry = s.augmentRound!.entries[p.id];
-  const pick = entry.offer[Math.floor(Math.random() * entry.offer.length)];
-  if (pick && p.augments.length < MAX_AUGMENT_SLOTS) addAugment(s, p, pick, null);
+  let pick = entry.offer[Math.floor(Math.random() * entry.offer.length)];
+  // 봇이 재추첨을 고르면 한 번 돌리고 다시 고른다
+  if (pick === 'rerollFate') {
+    applyRerollFatePick(s, p.id, { pushLog });
+    pick = entry.offer[Math.floor(Math.random() * entry.offer.length)] ?? pick;
+  }
+  if (pick && pick !== 'rerollFate' && p.augments.length < MAX_AUGMENT_SLOTS) addAugment(s, p, pick);
   entry.done = true;
 }
 
 /**
- * 증강을 고른다. 슬롯이 가득 찼으면 replace로 바꿀 증강을 정하거나, pick을 null로 보내 이번 후보를 버린다.
+ * 증강을 고른다. pick=null은 허용하지 않는다(반드시 하나 선택).
+ * 운명 재추첨을 고르면 후보만 갱신하고 선택은 계속한다.
  */
 export function chooseAugment(
   prev: GameState,
   playerId: number,
   pick: AugmentId | null,
-  replace: AugmentId | null = null,
+  _replace: AugmentId | null = null,
   now = Date.now(),
 ): EngineResult {
   const entry = prev.augmentRound?.entries[playerId];
   if (prev.phase !== 'augment' || !entry) return { ok: false, error: '증강을 고를 수 있는 단계가 아닙니다.' };
   if (entry.done) return { ok: false, error: '이미 선택했습니다.' };
+  if (pick === null) return { ok: false, error: '증강을 하나 골라 주세요.' };
+  if (!entry.offer.includes(pick)) return { ok: false, error: '제시된 증강이 아닙니다.' };
   const me = byId(prev, playerId)!;
-  const full = me.augments.length >= MAX_AUGMENT_SLOTS;
-  if (pick !== null) {
-    if (!entry.offer.includes(pick)) return { ok: false, error: '제시된 증강이 아닙니다.' };
-    if (owns(me, pick)) return { ok: false, error: '이미 보유한 증강입니다.' };
-    if (full && (!replace || !owns(me, replace))) return { ok: false, error: '교체할 증강을 골라 주세요.' };
-    if (!full && replace) return { ok: false, error: '빈 슬롯이 있어 교체할 필요가 없습니다.' };
-  } else if (!full) {
-    return { ok: false, error: '증강을 하나 골라 주세요.' };
-  }
+  if (owns(me, pick) && pick !== 'rerollFate') return { ok: false, error: '이미 보유한 증강입니다.' };
 
   const s = clone(prev);
   const p = byId(s, playerId)!;
-  if (pick) addAugment(s, p, pick, full ? replace : null);
-  else pushLog(s, `${p.name}: 슬롯이 가득 차 이번 증강을 받지 않았습니다.`);
+
+  if (pick === 'rerollFate') {
+    if (!applyRerollFatePick(s, playerId, { pushLog })) {
+      return { ok: false, error: '이미 재추첨했거나 사용할 수 없습니다.' };
+    }
+    s.actionSeq += 1;
+    return { ok: true, state: s };
+  }
+
+  if (p.augments.length >= MAX_AUGMENT_SLOTS) return { ok: false, error: '이번 판 증강이 가득 찼습니다.' };
+  addAugment(s, p, pick);
   s.augmentRound!.entries[playerId].done = true;
   s.actionSeq += 1;
   maybeFinishAugmentRound(s, now);
   return { ok: true, state: s };
 }
 
-export function rerollAugments(prev: GameState, playerId: number): EngineResult {
-  const entry = prev.augmentRound?.entries[playerId];
-  if (prev.phase !== 'augment' || !entry || entry.done) return { ok: false, error: '새로고침할 수 없습니다.' };
-  if (entry.rerolls <= 0) return { ok: false, error: '새로고침 횟수를 모두 사용했습니다.' };
-  const s = clone(prev);
-  const p = byId(s, playerId)!;
-  const e = s.augmentRound!.entries[playerId];
-  e.rerolls -= 1;
-  e.offer = rollOffer(s.augmentRound!.tier, p.augments.map((a) => a.id), 3, !p.isHuman);
-  s.actionSeq += 1;
-  return { ok: true, state: s };
+/** @deprecated 운명 재추첨 증강으로 대체. 호환용 no-op 실패 */
+export function rerollAugments(_prev: GameState, _playerId: number): EngineResult {
+  return { ok: false, error: '전체 새로고침은 운명 재추첨 증강으로 대체되었습니다.' };
 }
 
-/** 제시된 증강 중 한 장만 새로 뽑는다. 새로고침 횟수를 1 소모한다. */
-export function rerollAugmentSlot(prev: GameState, playerId: number, index: number): EngineResult {
-  const entry = prev.augmentRound?.entries[playerId];
-  if (prev.phase !== 'augment' || !entry || entry.done) return { ok: false, error: '새로고침할 수 없습니다.' };
-  if (entry.rerolls <= 0) return { ok: false, error: '새로고침 횟수를 모두 사용했습니다.' };
-  if (index < 0 || index >= entry.offer.length) return { ok: false, error: '잘못된 후보입니다.' };
-  const me = byId(prev, playerId)!;
-  const replacement = rollReplacement(
-    prev.augmentRound!.tier,
-    [...entry.offer, ...me.augments.map((a) => a.id)],
-    !me.isHuman,
-  );
-  if (!replacement) return { ok: false, error: '바꿀 수 있는 증강이 없습니다.' };
-  const s = clone(prev);
-  const e = s.augmentRound!.entries[playerId];
-  e.rerolls -= 1;
-  e.offer[index] = replacement;
-  s.actionSeq += 1;
-  return { ok: true, state: s };
+/** @deprecated */
+export function rerollAugmentSlot(_prev: GameState, _playerId: number, _index: number): EngineResult {
+  return { ok: false, error: '슬롯 새로고침은 더 이상 없습니다.' };
 }
 
 function maybeFinishAugmentRound(s: GameState, now: number) {
@@ -674,12 +680,16 @@ function autoPickExpired(s: GameState, now: number) {
   for (const [idStr, e] of Object.entries(round.entries)) {
     if (e.done) continue;
     const p = byId(s, Number(idStr))!;
-    const pick = e.offer[Math.floor(Math.random() * e.offer.length)];
-    if (pick && p.augments.length < MAX_AUGMENT_SLOTS) {
+    let pick = e.offer.find((id) => id !== 'rerollFate') ?? e.offer[0];
+    if (pick === 'rerollFate') {
+      applyRerollFatePick(s, p.id, { pushLog });
+      pick = e.offer.find((id) => id !== 'rerollFate') ?? e.offer[0];
+    }
+    if (pick && pick !== 'rerollFate' && p.augments.length < MAX_AUGMENT_SLOTS) {
       pushLog(s, `⏱ ${p.name}: 시간 초과로 자동 선택`);
-      addAugment(s, p, pick, null);
+      addAugment(s, p, pick);
     } else {
-      pushLog(s, `⏱ ${p.name}: 시간 초과 · 슬롯이 가득 차 기존 증강을 유지합니다.`);
+      pushLog(s, `⏱ ${p.name}: 시간 초과 · 증강을 받지 못했습니다.`);
     }
     e.done = true;
   }
@@ -792,22 +802,8 @@ export function tickTimeouts(prev: GameState, now = Date.now()): GameState {
 
 // ── 정산 ──
 
-function applyWinBonus(s: GameState, p: Player, won: number, lines: string[]) {
-  const profit = won - p.totalBet;
-  if (profit <= 0) return;
-  let bonus = 0;
-  if (hasActive(s, p, 'interest')) {
-    const b = Math.floor(profit * 0.3);
-    bonus += b;
-    lines.push(`💰 ${p.name}: 이자 수익 보너스 +${b}`);
-  }
-  if (hasActive(s, p, 'jackpot')) {
-    bonus += profit;
-    lines.push(`🎰 ${p.name}: 잭팟! 순이익 2배 +${profit}`);
-    consume(s, p, 'jackpot');
-  }
-  p.chips += bonus;
-  s.minted += bonus;
+function applyWinBonus(_s: GameState, _p: Player, _won: number, _lines: string[]) {
+  // 신규 증강은 칩 민팅 보너스가 없다
 }
 
 function finishHand(s: GameState, result: HandResult) {
@@ -816,6 +812,9 @@ function finishHand(s: GameState, result: HandResult) {
   s.phase = 'handOver';
   s.currentPlayer = -1;
   s.augmentRound = null;
+  // 판 종료 시 증강·임시 효과 즉시 초기화(다음 startHand에서도 다시 비움)
+  for (const p of s.players) p.augments = [];
+  s.effects = emptyEffects();
   s.actionSeq += 1;
   // 팟은 모두 분배됐다
   for (const p of s.players) {
@@ -876,12 +875,15 @@ export function buildPots(s: GameState): SidePot[] {
 }
 
 function showdown(s: GameState) {
+  // 올인 런아웃이 끊겼거나 덱이 모자란 경우에도 보드를 5장까지 채운다
+  while (s.community.length < 5 && s.deck.length > 0) {
+    s.community.push(s.deck.pop()!);
+  }
   s.street = 'river';
   const contenders = s.players.filter(isLive);
-  const values = new Map(
-    contenders.map((p) => [p.id, evaluate([...p.hole, ...s.community], evalOptionsFor(activeIds(s, p)))]),
-  );
+  const values = new Map(contenders.map((p) => [p.id, evaluate([...p.hole, ...s.community])]));
   const lines: string[] = [];
+  lines.push(`보드: ${s.community.map(cardLabel).join(' ')}`);
   for (const p of contenders) {
     lines.push(`${p.name}: ${p.hole.map(cardLabel).join(' ')} → ${values.get(p.id)!.name}`);
   }
@@ -904,13 +906,6 @@ function showdown(s: GameState) {
         winners.push(p);
       }
     }
-    if (winners.length > 1) {
-      const lucky = winners.filter((p) => hasActive(s, p, 'luckyCoin'));
-      if (lucky.length > 0 && lucky.length < winners.length) {
-        winners = lucky;
-        lines.push(`🪙 행운의 동전 발동! 무승부를 ${lucky.map((p) => p.name).join(', ')}이(가) 가져갑니다.`);
-      }
-    }
     // 나누어떨어지지 않는 칩은 딜러 왼쪽부터 한 칩씩 준다
     winners.sort((a, b) => ((a.seat - s.dealerSeat + MAX_SEATS * 2 - 1) % MAX_SEATS) - ((b.seat - s.dealerSeat + MAX_SEATS * 2 - 1) % MAX_SEATS));
     const share = Math.floor(sidePot.amount / winners.length);
@@ -928,66 +923,54 @@ function showdown(s: GameState) {
 
   for (const p of contenders) {
     const w = won.get(p.id) ?? 0;
-    if (w > 0) {
-      applyWinBonus(s, p, w, lines);
-    } else if (hasActive(s, p, 'insurance')) {
-      const refund = Math.floor(p.totalBet * 0.5);
-      p.chips += refund;
-      s.minted += refund;
-      lines.push(`🛡️ ${p.name}: 보험으로 ${refund}칩 환급`);
-    }
+    if (w > 0) applyWinBonus(s, p, w, lines);
   }
 
   finishHand(s, { showdown: true, lines, winnerIds: [...won.keys()], pot, net: netOf(s, won) });
 }
 
-// ── 능동형 증강 (화면을 보는 플레이어) ──
+// ── 능동형 증강 ──
 
-export function canUseMulligan(s: GameState, playerId = s.heroId): boolean {
-  const p = byId(s, playerId);
-  return Boolean(p && s.phase === 'betting' && hasActive(s, p, 'mulligan') && s.street !== 'river');
+export function invokeAugment(
+  prev: GameState,
+  augmentId: AugmentId,
+  payload: AugmentPayload,
+  playerId = prev.heroId,
+): EngineResult {
+  return useAugmentImpl(prev, playerId, augmentId, payload, augmentCtx);
 }
 
-export function mulliganCard(prev: GameState, cardIndex: number, playerId = prev.heroId): GameState {
-  if (!canUseMulligan(prev, playerId)) return prev;
-  const s = clone(prev);
-  const p = byId(s, playerId)!;
-  if (cardIndex < 0 || cardIndex >= p.hole.length) return prev;
-  const old = p.hole[cardIndex];
-  p.hole[cardIndex] = s.deck.pop()!;
-  pushLog(s, `🔄 멀리건: ${cardLabel(old)} → ${cardLabel(p.hole[cardIndex])}`);
-  consume(s, p, 'mulligan');
-  s.actionSeq += 1;
-  return s;
-}
+export { canUseAugment };
+export type { AugmentPayload };
 
-export function canSeeNextCard(s: GameState, playerId = s.heroId): boolean {
-  const p = byId(s, playerId);
-  return Boolean(
-    p &&
-      s.phase === 'betting' &&
-      (hasActive(s, p, 'foresight') || hasActive(s, p, 'fateTwist')) &&
-      s.community.length < 5,
-  );
-}
-
-export function canUseFateTwist(s: GameState, playerId = s.heroId): boolean {
-  const p = byId(s, playerId);
-  return Boolean(p && s.phase === 'betting' && hasActive(s, p, 'fateTwist') && s.community.length < 5);
-}
-
-export function twistFate(prev: GameState, playerId = prev.heroId): GameState {
-  if (!canUseFateTwist(prev, playerId)) return prev;
-  const s = clone(prev);
-  const burned = s.deck.pop()!;
-  pushLog(s, `🌀 운명 조작: 다음 카드 ${cardLabel(burned)}을(를) 버렸습니다.`);
-  consume(s, byId(s, playerId)!, 'fateTwist');
-  s.actionSeq += 1;
-  return s;
+/** 미래 예지로 본 다음 카드(본인만) */
+export function peekForesight(s: GameState, playerId = s.heroId) {
+  return s.effects.foresight[playerId] ?? null;
 }
 
 export function peekNextCard(s: GameState) {
   return s.deck[s.deck.length - 1];
+}
+
+/** @deprecated */
+export function canUseMulligan() {
+  return false;
+}
+/** @deprecated */
+export function mulliganCard(prev: GameState) {
+  return prev;
+}
+/** @deprecated */
+export function canSeeNextCard(s: GameState, playerId = s.heroId) {
+  return Boolean(s.effects.foresight[playerId]);
+}
+/** @deprecated */
+export function canUseFateTwist() {
+  return false;
+}
+/** @deprecated */
+export function twistFate(prev: GameState) {
+  return prev;
 }
 
 /** 테이블 위 전체 칩 (스택 + 팟). 증강으로 생긴 칩을 빼면 판이 바뀌어도 일정해야 한다. */

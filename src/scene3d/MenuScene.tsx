@@ -44,8 +44,8 @@ function FlatCard({ card, position, yaw = 0 }: { card: Card; position: Vec3; yaw
 function SeatDressing() {
   return (
     <group>
-      <FlatCard card={{ rank: 14, suit: 's' }} position={[-0.16, TABLE_Y + 0.008, 1.32]} yaw={0.12} />
-      <FlatCard card={{ rank: 13, suit: 's' }} position={[0.16, TABLE_Y + 0.012, 1.34]} yaw={-0.1} />
+      <FlatCard card={{ id: 9001, rank: 14, suit: 's' }} position={[-0.16, TABLE_Y + 0.008, 1.32]} yaw={0.12} />
+      <FlatCard card={{ id: 9002, rank: 13, suit: 's' }} position={[0.16, TABLE_Y + 0.012, 1.34]} yaw={-0.1} />
       <ChipStack amount={2600} bb={20} position={[0.78, TABLE_Y, 1.22]} />
       <ChipStack amount={940} bb={20} position={[-0.8, TABLE_Y, 1.2]} />
     </group>

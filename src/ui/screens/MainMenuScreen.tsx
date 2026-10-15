@@ -50,6 +50,7 @@ export function MainMenuScreen() {
   const left: NavItem[] = [
     { icon: 'plus', label: '방 만들기', hint: '새 테이블을 열고 친구를 초대합니다', onClick: () => nav.openModal({ name: 'create-room' }), primary: true, gesture: 'augment' },
     { icon: 'play', label: '봇 대전', hint: 'AI를 상대로 홀덤을 플레이합니다', onClick: () => nav.openModal({ name: 'practice-setup' }), gesture: 'bet' },
+    { icon: 'spark', label: '증강 도감', hint: '20종 증강의 효과와 등급을 봅니다', onClick: () => nav.push({ name: 'augment-codex' }), gesture: 'augment' },
     { icon: 'search', label: '방 찾기', hint: '참가할 수 있는 공개 방 목록', onClick: () => nav.push({ name: 'rooms', mode: 'all' }), gesture: 'check' },
   ];
   const right: NavItem[] = [
@@ -57,10 +58,10 @@ export function MainMenuScreen() {
     {
       icon: 'invite',
       label: '친구 초대',
-      hint: 'Steam 친구를 내 방으로 초대합니다',
+      hint: 'LAN으로 친구를 초대하는 방법',
       onClick: () => {
         if (!rooms.getCurrentRoom()) nav.openModal({ name: 'invite-guide' });
-        else nav.toast('Steam 초대 창은 9단계에서 연결됩니다.');
+        else nav.toast('대기실에서 IP와 방 코드를 복사해 친구에게 보내세요.');
       },
       gesture: 'check',
     },

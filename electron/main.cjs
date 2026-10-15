@@ -5,6 +5,7 @@ const { createLogger } = require('./logger.cjs');
 const { createSettingsStore } = require('./settingsStore.cjs');
 const { initSteam } = require('./steam.cjs');
 const { createWalletStore } = require('./walletStore.cjs');
+const { createLanHub } = require('./lanHub.cjs');
 
 const isDev = process.argv.includes('--dev');
 
@@ -42,6 +43,10 @@ const wallet = createWalletStore({
   logger,
 });
 let win = null;
+const lan = createLanHub({
+  logger,
+  getWindow: () => win,
+});
 
 function workArea() {
   if (!win) return null;
@@ -136,6 +141,31 @@ ipcMain.on('log:write', (_e, level, message) => {
 });
 ipcMain.handle('app:quit', () => app.quit());
 
+ipcMain.handle('lan:localAddresses', () => lan.localAddresses());
+ipcMain.handle('lan:status', () => lan.status());
+ipcMain.handle('lan:hostStart', async (_e, opts) => {
+  try {
+    return await lan.hostStart(opts ?? {});
+  } catch (err) {
+    logger.error(`[lan] hostStart failed: ${err?.stack ?? err}`);
+    return { ok: false, error: err?.message ?? String(err) };
+  }
+});
+ipcMain.handle('lan:connect', async (_e, opts) => {
+  try {
+    return await lan.connect(opts);
+  } catch (err) {
+    logger.error(`[lan] connect failed: ${err?.stack ?? err}`);
+    return { ok: false, error: err?.message ?? '호스트에 연결할 수 없습니다.' };
+  }
+});
+ipcMain.handle('lan:send', (_e, peerId, msg) => lan.send(peerId, msg));
+ipcMain.handle('lan:broadcast', (_e, msg, exceptPeerId) => lan.broadcast(msg, exceptPeerId ?? null));
+ipcMain.handle('lan:shutdown', async () => {
+  await lan.shutdown();
+  return { ok: true };
+});
+
 const multiInstance = instanceId !== null;
 if (!multiInstance && !app.requestSingleInstanceLock()) {
   app.quit();
@@ -152,5 +182,8 @@ if (!multiInstance && !app.requestSingleInstanceLock()) {
   });
 
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => logger.info('quit'));
+  app.on('before-quit', () => {
+    void lan.shutdown();
+    logger.info('quit');
+  });
 }

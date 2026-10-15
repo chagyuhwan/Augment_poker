@@ -195,7 +195,10 @@ export function Avatar({ player }: { player: Player }) {
   const showdown = handOver && !!state.result?.showdown;
   // 패를 손에 든 동안(카드 배치는 Cards.tsx와 맞춘다)
   const holding =
-    player.inHand && !player.folded && player.hole.length > 0 && (isHero || (!showdown && state.revealed[player.id] === undefined));
+    player.inHand &&
+    !player.folded &&
+    player.hole.length > 0 &&
+    (isHero || (!showdown && !(state.effects.forceRevealed.includes(player.id) || (state.revealed[player.id]?.length ?? 0) > 0)));
   const persistent = busted ? 'busted' : isWinner ? 'win' : lost ? 'lose' : player.folded ? 'folded' : isTurn ? 'think' : player.status === 'waiting' ? 'away' : 'idle';
 
   useFrame(({ clock }, rawDt) => {

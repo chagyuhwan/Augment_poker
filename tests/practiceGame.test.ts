@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decideBotAction } from '../src/practice/game/ai';
 import { AUGMENTS, MAX_AUGMENT_SLOTS } from '../src/practice/game/augments';
 import { createPracticeTable, refillBots } from '../src/practice/game/botTable';
-import { fullDeck, sameCard } from '../src/practice/game/cards';
+import { fullDeck, makeCard, sameFace } from '../src/practice/game/cards';
 import {
   AUGMENT_PICK_MS,
   RECONNECT_GRACE_MS,
@@ -13,24 +13,24 @@ import {
   canStartHand,
   chooseAugment,
   createTable,
-  hasActive,
+  invokeAugment,
   legalActions,
   markDisconnected,
   markReconnected,
   requestLeave,
-  rerollAugmentSlot,
   seatPlayer,
   startHand,
   tickTimeouts,
   totalChips,
   type CreateTableOptions,
 } from '../src/practice/game/engine';
-import { evaluate } from '../src/practice/game/evaluator';
+import { compareScore, evaluate } from '../src/practice/game/evaluator';
 import type { Card, GameState, PlayerAction } from '../src/practice/game/types';
 
+let testCardId = 10000;
 const c = (s: string): Card => {
   const rankMap: Record<string, number> = { A: 14, K: 13, Q: 12, J: 11, T: 10 };
-  return { rank: rankMap[s[0]] ?? Number(s[0]), suit: s[1] as Card['suit'] };
+  return makeCard({ nextCardId: testCardId++ }, rankMap[s[0]] ?? Number(s[0]), s[1] as Card['suit']);
 };
 const cards = (s: string) => s.split(' ').map(c);
 
@@ -62,7 +62,7 @@ function rig(s: GameState, holes: Record<number, string>, board: string): GameSt
   }
   const b = cards(board);
   used.push(...b);
-  const rest = fullDeck().filter((x) => !used.some((u) => sameCard(u, x)));
+  const rest = fullDeck(r).filter((x) => !used.some((u) => sameFace(u, x)));
   r.deck = [...rest, ...[...b].reverse()];
   return r;
 }
@@ -328,19 +328,21 @@ describe('액션 검증', () => {
 });
 
 describe('증강 선택', () => {
-  it('첫 번째 베팅 구간 뒤와 세 번째 베팅 구간 뒤에 한 번씩 선택한다', () => {
+  it('첫·세 번째 베팅 구간 뒤에 한 번씩 고르고, 판이 끝나면 초기화된다', () => {
     let s = table({ mode: 'augmented', stacks: [1000, 1000, 1000] });
     s = checkAround(s);
     expect(s.phase).toBe('augment');
     expect(s.augmentRound!.round).toBe(1);
     expect(s.community).toHaveLength(0);
-    // 봇은 바로 고르고 사람만 남는다
-    const pending = Object.entries(s.augmentRound!.entries).filter(([, e]) => !e.done).map(([id]) => Number(id));
+    const pending = Object.entries(s.augmentRound!.entries)
+      .filter(([, e]) => !e.done)
+      .map(([id]) => Number(id));
     expect(pending).toEqual([s.heroId]);
 
-    const offer = s.augmentRound!.entries[s.heroId].offer;
-    expect(offer).toHaveLength(3);
-    const r1 = chooseAugment(s, s.heroId, offer[0], null, T);
+    const offer = s.augmentRound!.entries[s.heroId].offer.filter((id) => id !== 'rerollFate');
+    expect(s.augmentRound!.entries[s.heroId].offer).toHaveLength(3);
+    const pick1 = offer[0] ?? s.augmentRound!.entries[s.heroId].offer[0];
+    const r1 = chooseAugment(s, s.heroId, pick1, null, T);
     expect(r1.ok).toBe(true);
     if (!r1.ok) return;
     s = r1.state;
@@ -349,28 +351,28 @@ describe('증강 선택', () => {
 
     s = doAct(s, { type: 'call' });
     s = doAct(s, { type: 'call' });
-    s = doAct(s, { type: 'call' }); // 플랍 베팅 종료 → 턴
-    expect(s.phase).toBe('betting');
+    s = doAct(s, { type: 'call' });
     expect(s.community).toHaveLength(4);
-    s = checkAround(s); // 턴 베팅 종료 → 두 번째 증강
+    s = checkAround(s);
     expect(s.phase).toBe('augment');
     expect(s.augmentRound!.round).toBe(2);
-    expect(s.community).toHaveLength(4);
+    expect(s.augmentRound!.entries[s.heroId].offer).not.toContain(pick1);
+    expect(s.augmentRound!.entries[s.heroId].offer).not.toContain('handFlip');
 
-    const offer2 = s.augmentRound!.entries[s.heroId].offer;
-    expect(offer2).not.toContain(offer[0]);
-    const r2 = chooseAugment(s, s.heroId, offer2[0], null, T);
+    const offer2 = s.augmentRound!.entries[s.heroId].offer.filter((id) => id !== 'rerollFate');
+    const pick2 = offer2[0] ?? s.augmentRound!.entries[s.heroId].offer[0];
+    const r2 = chooseAugment(s, s.heroId, pick2, null, T);
     if (!r2.ok) throw new Error(r2.error);
     s = r2.state;
     expect(s.community).toHaveLength(5);
     s = checkAround(s);
     expect(s.phase).toBe('handOver');
     expect(s.augmentRoundsDone).toBe(2);
-    expect(byId(s, s.heroId)!.augments.map((a) => a.id)).toEqual([offer[0], offer2[0]]);
+    // 핸드 종료 시 증강 초기화
+    expect(byId(s, s.heroId)!.augments).toEqual([]);
 
-    // 판이 바뀌어도 증강은 유지된다
     const next = startHand(s, T);
-    expect(byId(next, next.heroId)!.augments.length).toBeGreaterThanOrEqual(1);
+    expect(byId(next, next.heroId)!.augments).toEqual([]);
   });
 
   it('한 명만 남아 핸드가 끝나면 증강 선택을 생략한다', () => {
@@ -403,91 +405,90 @@ describe('증강 선택', () => {
     expect(byId(s, s.heroId)!.augments).toHaveLength(1);
   });
 
-  it('슬롯은 3개, 가득 차면 교체하거나 버리고, 같은 증강은 다시 나오지 않는다', () => {
+  it('한 판에 최대 2개만 보유하고 보유 증강은 후보에서 빠진다', () => {
     let s = table({ mode: 'augmented', stacks: [100000, 100000] });
     const me = () => byId(s, s.heroId)!;
     let picks = 0;
     let guard = 0;
-    while (picks < 5 && guard++ < 200) {
+    while (picks < 2 && guard++ < 80) {
       if (s.phase === 'betting') s = doAct(s, { type: 'call' });
       else if (s.phase === 'augment') {
         const entry = s.augmentRound!.entries[s.heroId];
         const owned = me().augments.map((a) => a.id);
         expect(entry.offer.some((id) => owned.includes(id))).toBe(false);
-        if (owned.length < MAX_AUGMENT_SLOTS) {
-          // 빈 슬롯이 있으면 교체 요청은 거부된다
-          expect(chooseAugment(s, s.heroId, entry.offer[0], owned[0] ?? 'interest', T).ok).toBe(false);
-          const r = chooseAugment(s, s.heroId, entry.offer[0], null, T);
-          if (!r.ok) throw new Error(r.error);
-          s = r.state;
-        } else if (picks === 3) {
-          expect(chooseAugment(s, s.heroId, entry.offer[0], null, T)).toMatchObject({ ok: false });
-          const r = chooseAugment(s, s.heroId, entry.offer[0], owned[0], T);
-          if (!r.ok) throw new Error(r.error);
-          s = r.state;
-          expect(me().augments.map((a) => a.id)).not.toContain(owned[0]);
-          expect(me().augments.map((a) => a.id)).toContain(entry.offer[0]);
-        } else {
-          const r = chooseAugment(s, s.heroId, null, null, T);
-          if (!r.ok) throw new Error(r.error);
-          s = r.state;
-          expect(me().augments.map((a) => a.id)).toEqual(owned);
-        }
+        const pick = entry.offer.find((id) => id !== 'rerollFate')!;
+        const r = chooseAugment(s, s.heroId, pick, null, T);
+        if (!r.ok) throw new Error(r.error);
+        s = r.state;
         picks++;
         expect(me().augments.length).toBeLessThanOrEqual(MAX_AUGMENT_SLOTS);
-        expect(new Set(me().augments.map((a) => a.id)).size).toBe(me().augments.length);
       } else s = startHand(s, T);
     }
-    expect(picks).toBe(5);
+    expect(picks).toBe(2);
   });
 
-  it('카드별 새로고침은 한 칸만 바꾸고 보유 증강과 겹치지 않는다', () => {
+  it('운명 재추첨을 고르면 후보가 바뀌고 선택은 계속된다', () => {
     let s = table({ mode: 'augmented', stacks: [1000, 1000] });
     s = checkAround(s);
-    const before = s.augmentRound!.entries[s.heroId];
-    const r = rerollAugmentSlot(s, s.heroId, 1);
+    const entry = s.augmentRound!.entries[s.heroId];
+    // 강제로 재추첨을 후보에 넣는다
+    entry.offer = ['rerollFate', 'aceStamp', 'redeal'];
+    const r = chooseAugment(s, s.heroId, 'rerollFate', null, T);
     if (!r.ok) throw new Error(r.error);
-    const after = r.state.augmentRound!.entries[s.heroId];
-    expect(after.rerolls).toBe(before.rerolls - 1);
-    expect(after.offer[0]).toBe(before.offer[0]);
-    expect(after.offer[2]).toBe(before.offer[2]);
-    expect(after.offer[1]).not.toBe(before.offer[1]);
-    expect(new Set(after.offer).size).toBe(3);
-    expect(rerollAugmentSlot(r.state, s.heroId, 0).ok).toBe(false);
+    s = r.state;
+    expect(s.phase).toBe('augment');
+    expect(s.augmentRound!.entries[s.heroId].rerolled).toBe(true);
+    expect(s.augmentRound!.entries[s.heroId].offer).not.toContain('rerollFate');
+    expect(s.augmentRound!.entries[s.heroId].done).toBe(false);
   });
 
-  it('일회용 증강은 발동 후 사라진다 (징수)', () => {
-    let s = table({ mode: 'augmented', stacks: [1000, 1000, 1000] });
+  it('에이스 각인으로 카드를 A로 바꾸고 일회용은 소모된다', () => {
+    let s = table({ mode: 'augmented', stacks: [1000, 1000] });
     s = checkAround(s);
     const fake = structuredClone(s);
-    byId(fake, fake.heroId)!.augments = [{ id: 'tax', acquiredHand: 0 }];
-    fake.phase = 'handOver';
+    fake.phase = 'betting';
     fake.augmentRound = null;
-    for (const p of fake.players) {
-      p.chips += p.totalBet;
-      p.bet = 0;
-      p.totalBet = 0;
-    }
-    const next = startHand(fake, T);
-    expect(byId(next, next.heroId)!.augments).toEqual([]);
-    expect(next.log.some((l) => l.includes('징수했습니다'))).toBe(true);
+    const me = byId(fake, fake.heroId)!;
+    me.folded = false;
+    me.inHand = true;
+    me.augments = [{ id: 'aceStamp', used: false }];
+    me.hole = cards('2s Kh');
+    const r = invokeAugment(fake, 'aceStamp', { type: 'hole', index: 0 });
+    if (!r.ok) throw new Error(r.error);
+    expect(byId(r.state, r.state.heroId)!.hole[0].rank).toBe(14);
+    expect(byId(r.state, r.state.heroId)!.augments).toEqual([]);
   });
 
-  it('폴드한 플레이어도 고를 수 있지만 이번 판에는 효과가 없다', () => {
+  it('복제술로 동일 얼굴 카드를 추가할 수 있다', () => {
+    let s = table({ mode: 'augmented', stacks: [1000, 1000] });
+    s = checkAround(s);
+    const fake = structuredClone(s);
+    fake.phase = 'betting';
+    fake.augmentRound = null;
+    const me = byId(fake, fake.heroId)!;
+    me.folded = false;
+    me.inHand = true;
+    me.augments = [{ id: 'clone', used: false }];
+    me.hole = cards('As Kh');
+    const r = invokeAugment(fake, 'clone', { type: 'hole', index: 0 });
+    if (!r.ok) throw new Error(r.error);
+    const hole = byId(r.state, r.state.heroId)!.hole;
+    expect(hole).toHaveLength(3);
+    expect(hole.filter((x) => x.rank === 14 && x.suit === 's')).toHaveLength(2);
+    expect(hole[0].id).not.toBe(hole[2].id);
+  });
+
+  it('폴드한 플레이어는 증강 선택에 참여하지 않는다', () => {
     let s = table({ mode: 'augmented', stacks: [1000, 1000, 1000] });
-    // 사람이 폴드하고 나머지가 진행
     let guard = 0;
-    while (s.phase === 'betting' && guard++ < 20) {
+    while (s.phase === 'betting' && s.augmentRoundsDone === 0 && guard++ < 40) {
       s = doAct(s, s.currentPlayer === s.heroId ? { type: 'fold' } : { type: 'call' });
     }
-    expect(s.phase).toBe('augment');
-    const entry = s.augmentRound!.entries[s.heroId];
-    expect(entry).toBeDefined();
-    const r = chooseAugment(s, s.heroId, entry.offer[0], null, T);
-    if (!r.ok) throw new Error(r.error);
-    const me = byId(r.state, r.state.heroId)!;
-    expect(me.augments).toHaveLength(1);
-    expect(hasActive(r.state, me, me.augments[0].id)).toBe(false);
+    // 봇만 남은 라운드는 즉시 종료되므로 phase는 betting(플랍)이 된다
+    expect(byId(s, s.heroId)!.folded).toBe(true);
+    expect(byId(s, s.heroId)!.augments).toEqual([]);
+    expect(s.augmentRoundsDone).toBeGreaterThanOrEqual(1);
+    expect(s.players.some((p) => !p.isHuman && p.augments.length > 0)).toBe(true);
   });
 
   it('봇에게는 봇이 쓸 수 있는 증강만 제시된다', () => {
@@ -499,6 +500,65 @@ describe('증강 선택', () => {
     }
   });
 });
+
+describe('족보 (중복 카드)', () => {
+  it('플러시+풀하우스는 풀하우스', () => {
+    const hand = evaluate(cards('Ah Ah Ah Kh Kh'));
+    expect(hand.name).toBe('풀하우스');
+  });
+
+  it('동일 숫자 5장은 포카드(키커 0)', () => {
+    const hand = evaluate(cards('As As As As As'));
+    expect(hand.score[0]).toBe(7);
+    expect(hand.score[1]).toBe(14);
+    expect(hand.score[2]).toBe(0);
+  });
+
+  it('중복만 있는 A K Q J는 스트레이트가 아니다', () => {
+    const hand = evaluate(cards('As As Kh Qd Jc'));
+    expect(hand.score[0]).toBeLessThan(4);
+  });
+});
+
+describe('홀덤 족보', () => {
+  it('보드 원페어만 있으면 홀카드와 무관하게 원페어', () => {
+    const board = cards('Ad 8s 8c 2h');
+    expect(evaluate([...cards('Tc 9h'), ...board]).name).toBe('원페어');
+    expect(evaluate([...cards('Qs 5h'), ...board]).name).toBe('원페어');
+  });
+
+  it('보드에 페어가 둘이면 투페어 (키커로 승패)', () => {
+    const board = cards('Ad 8s 8c 2h Ac');
+    const a = evaluate([...cards('Tc 9h'), ...board]);
+    const b = evaluate([...cards('Qs 5h'), ...board]);
+    expect(a.name).toBe('투페어');
+    expect(b.name).toBe('투페어');
+    expect(compareScore(b.score, a.score)).toBeGreaterThan(0);
+  });
+
+  it('홀카드가 보드와 맞아 페어가 되면 원페어', () => {
+    expect(evaluate(cards('Ah Kd Qc Js 9h As 2c')).name).toBe('원페어');
+  });
+
+  it('포켓 페어 + 보드 페어 = 투페어', () => {
+    expect(evaluate(cards('9h 9d As 8c 8s 2h 3c')).name).toBe('투페어');
+  });
+
+  it('7장 중 최고 5장만 쓴다 (2-6 스트레이트가 A-5 휠보다 높음)', () => {
+    // 보드 2 3 4 5 9 + 홀 A 6 → 2-3-4-5-6 (휠 A-2-3-4-5보다 높음)
+    expect(evaluate(cards('As 6d 2c 3h 4s 5d 9c')).score).toEqual([4, 6]);
+  });
+
+  it('키커 비교: 같은 원페어면 높은 키커 승', () => {
+    const board = cards('8d 8s 2c 3h 4s');
+    const low = evaluate([...cards('9c 7h'), ...board]);
+    const high = evaluate([...cards('Qc 5h'), ...board]);
+    expect(low.name).toBe('원페어');
+    expect(high.name).toBe('원페어');
+    expect(compareScore(high.score, low.score)).toBeGreaterThan(0);
+  });
+});
+
 
 describe('입장 / 퇴장 / 연결 끊김', () => {
   it('게임 중에 들어온 플레이어는 대기하다가 다음 판부터 참가한다', () => {

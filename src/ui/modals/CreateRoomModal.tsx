@@ -15,6 +15,8 @@ import {
   type RoomConfigField,
   type RoomVisibility,
 } from '../../core/roomConfig';
+import { ensureFundsForBuyIn } from '../../wallet/ensureFunds';
+import { useWallet } from '../../wallet/useWallet';
 import { Button } from '../components/Button';
 import { Field, Segmented, TextInput, Toggle } from '../components/Controls';
 import { Modal } from '../components/Modal';
@@ -23,7 +25,8 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   const nav = useNavigation();
-  const { identity, rooms } = useServices();
+  const { identity, rooms, lan, wallet } = useServices();
+  const { refresh } = useWallet();
   const [config, setConfig] = useState<RoomConfig>(() =>
     createDefaultRoomConfig(initialMode ?? 'normal-holdem', identity.getLocalPlayer().displayName),
   );
@@ -45,12 +48,32 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   const submit = async () => {
     setSubmitted(true);
     if (errors.length > 0 || passwordMissing || busy) return;
+    if (!rooms.available && !lan) {
+      nav.openModal({
+        name: 'message',
+        title: '방을 만들 수 없습니다',
+        body: rooms.unavailableReason ?? 'LAN 방 서비스가 없습니다. Electron을 재시작해 주세요.',
+        tone: 'danger',
+      });
+      return;
+    }
     setBusy(true);
-    const result = await rooms.createRoom(normalizeRoomConfig(effective));
+    const need = effective.minBuyIn;
+    // 지갑 미로드·묶인 LAN 칩·무료 충전을 처리한 뒤 방을 연다 (잔액 0으로 오인하지 않음)
+    const funds = await ensureFundsForBuyIn(wallet, need);
+    await refresh();
+    if (!funds.ok) {
+      setBusy(false);
+      nav.closeModal();
+      nav.toast(funds.error, 'error');
+      nav.push({ name: 'wallet' });
+      return;
+    }
+    const result = await (lan ?? rooms).createRoom(normalizeRoomConfig(effective));
     setBusy(false);
     if (result.ok) {
       nav.closeModal();
-      // 대기실 화면은 2단계에서 연결
+      nav.push({ name: 'lobby' });
       return;
     }
     nav.openModal({ name: 'message', title: '방을 만들 수 없습니다', body: result.message, tone: 'danger' });
@@ -59,7 +82,7 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   return (
     <Modal
       title="방 만들기"
-      subtitle="테이블 규칙을 정하고 방을 엽니다. 방장도 플레이어로 참가합니다."
+      subtitle="LAN으로 친구와 홀덤을 합니다. 같은 Wi‑Fi에서 IP·방 코드로 초대하세요. (7포커는 준비 중)"
       icon="plus"
       width={1040}
       onClose={nav.closeModal}

@@ -33,7 +33,7 @@ export class UnavailableRoomService implements IRoomService {
     return this.fail<RoomSnapshot>();
   }
 
-  joinByCode() {
+  joinByCode(_code?: string, _password?: string, _host?: string) {
     return this.fail<RoomSnapshot>();
   }
 

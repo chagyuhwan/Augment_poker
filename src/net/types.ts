@@ -64,7 +64,8 @@ export interface IRoomService {
   listRooms(): Promise<Result<RoomListing[]>>;
   createRoom(config: RoomConfig): Promise<Result<RoomSnapshot>>;
   joinRoom(roomId: string, password?: string): Promise<Result<RoomSnapshot>>;
-  joinByCode(code: string, password?: string): Promise<Result<RoomSnapshot>>;
+  /** host: LAN 호스트 IP (같은 PC면 127.0.0.1). Steam 등에서는 무시될 수 있음 */
+  joinByCode(code: string, password?: string, host?: string): Promise<Result<RoomSnapshot>>;
   leaveRoom(): Promise<void>;
 }
 

@@ -140,7 +140,7 @@ export function Cards() {
         }
         const tx = -Math.sin(a);
         const tz = Math.cos(a);
-        const revealed = state.revealed[p.id] === idx;
+        const revealed = (state.revealed[p.id] ?? []).includes(idx) || state.effects.forceRevealed.includes(p.id);
         if (!showdown && !revealed) {
           // 캐릭터가 가슴 앞에 들고 있는 패: 앞면은 캐릭터 쪽, 뒷면이 테이블 쪽을 본다
           const held = polar(a, SEAT.held, TABLE_Y + 0.14);
@@ -178,7 +178,9 @@ export function Cards() {
     state.community.forEach((card, i) => {
       const st = [...streets].reverse().find((e) => i >= e.from && i < e.from + e.count);
       const key = `c${state.handNumber}-${i}`;
-      const appearAt = st ? st.at + (i - st.from) * FX_MS.streetCard * speed : seen(key, now);
+      // 쇼다운 결과와 보드가 어긋나지 않게, 핸드 종료 시 공용카드는 즉시 공개
+      const scheduled = st ? st.at + (i - st.from) * FX_MS.streetCard * speed : seen(key, now);
+      const appearAt = showdown ? Math.min(scheduled, now) : scheduled;
       out.push({
         key,
         card,
