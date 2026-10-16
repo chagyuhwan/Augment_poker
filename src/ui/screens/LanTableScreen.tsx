@@ -13,6 +13,7 @@ import {
   chooseAugment,
   invokeAugment,
   isLive,
+  rematch,
   requestLeave,
   startHand,
 } from '../../practice/game/engine';
@@ -20,7 +21,6 @@ import { createLanTable } from '../../practice/game/lanTable';
 import type { GameState, TableMode } from '../../practice/game/types';
 import { GameScreen } from '../../practice/ui/GameScreen';
 import { BOT_DELAY } from '../../settings/settings';
-import { fmtMoney } from '../../wallet/useWallet';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 
@@ -31,18 +31,19 @@ interface Props {
 
 export function LanTableScreen({ start, tableId }: Props) {
   const nav = useNavigation();
-  const { lan, wallet } = useServices();
+  const { lan } = useServices();
   const { settings } = useSettings();
   const isHost = start.role === 'host';
   const [paused, setPaused] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
-  const [busted, setBusted] = useState(false);
-  const settledRef = useRef(false);
+  const leftRef = useRef(false);
   const seqRef = useRef(0);
   const gameRef = useRef<GameState | null>(null);
   const seatByPeerRef = useRef(start.seatByPeer);
+  const lastEventSeq = useRef(0);
 
   const mode: TableMode = getGameMode(start.room.config.mode).augmented ? 'augmented' : 'normal';
+  const startingChips = start.room.config.startingChips || start.room.config.minBuyIn;
 
   const [initError, setInitError] = useState<string | null>(null);
   const [game, setGame] = useState<GameState | null>(() => {
@@ -53,19 +54,17 @@ export function LanTableScreen({ start, tableId }: Props) {
         peerId: m.peerId,
         playerId: m.playerId,
         name: m.displayName,
-        chips: Math.max(1, start.buyIns[m.playerId] || start.room.config.minBuyIn),
+        chips: startingChips,
       }));
-      // 방장을 humans[0]으로
       humans.sort((a, b) => (a.peerId === 'local' ? -1 : b.peerId === 'local' ? 1 : 0));
       if (humans.length < 1 || humans[0].peerId !== 'local') {
-        // 방장이 meta에 없으면 로컬로 강제 삽입
         const host = meta.members.find((m) => m.peerId === 'local');
         if (host) {
           humans.unshift({
             peerId: 'local',
             playerId: host.playerId,
             name: host.displayName,
-            chips: Math.max(1, start.buyIns[host.playerId] || start.room.config.minBuyIn),
+            chips: startingChips,
           });
         }
       }
@@ -76,7 +75,8 @@ export function LanTableScreen({ start, tableId }: Props) {
         maxSeats: start.room.config.maxPlayers,
         smallBlind: start.room.config.smallBlind,
         bigBlind: start.room.config.bigBlind,
-        minBuyIn: start.room.config.minBuyIn,
+        startingChips,
+        matchHands: start.room.config.matchHands,
         maxBet: maxBetAmount(start.room.config),
         fillBots: true,
       });
@@ -112,13 +112,11 @@ export function LanTableScreen({ start, tableId }: Props) {
     [lan, isHost],
   );
 
-  // 호스트: 상태 변경 시 브로드캐스트
   useEffect(() => {
     if (!isHost || !game) return;
     broadcastViews(game);
   }, [game, isHost, broadcastViews]);
 
-  // 게스트: 상태 수신
   useEffect(() => {
     if (isHost || !lan) return;
     return lan.onStateView((view) => {
@@ -126,7 +124,6 @@ export function LanTableScreen({ start, tableId }: Props) {
     });
   }, [isHost, lan]);
 
-  // 호스트: 원격 액션 적용
   useEffect(() => {
     if (!isHost || !lan) return;
     return lan.onRemoteAction((_from, msg) => {
@@ -147,7 +144,11 @@ export function LanTableScreen({ start, tableId }: Props) {
 
   const nextHand = useCallback((s: GameState) => startHand(s), []);
 
-  // 게스트 액션 전송
+  const onRematch = useCallback(() => {
+    if (!isHost) return;
+    setGame((s) => (s ? rematch(s) : s));
+  }, [isHost]);
+
   const onRemoteAction = useCallback(
     (request: LanActionRequest) => {
       if (!lan) return;
@@ -157,49 +158,44 @@ export function LanTableScreen({ start, tableId }: Props) {
     [lan],
   );
 
-  // 소진 감지 (호스트·게스트 공통 — 본인 heroId 기준)
   useEffect(() => {
-    if (!game || settledRef.current) return;
-    const me = byId(game, game.heroId);
-    if (me?.status === 'busted') {
-      settledRef.current = true;
-      void wallet.cashOut(tableId, 0, 'bust');
-      setBusted(true);
+    if (!game) return;
+    const fresh = game.events.filter((e) => e.seq > lastEventSeq.current);
+    if (fresh.length === 0) return;
+    lastEventSeq.current = fresh[fresh.length - 1].seq;
+    for (const e of fresh) {
+      if (e.type === 'chipRefill' && e.playerId === game.heroId) {
+        nav.toast(`칩 ${e.amount.toLocaleString()}이 복구되었습니다.`, 'success');
+      } else if (e.type === 'busted' && e.playerId === game.heroId) {
+        const last = game.handNumber >= game.matchHands;
+        nav.toast(
+          last ? '칩이 소진되었습니다. 매치가 종료됩니다.' : '칩이 소진되었습니다. 다음 핸드에 자동 복구됩니다.',
+          'default',
+        );
+      }
     }
-  }, [game, tableId, wallet]);
+  }, [game, nav]);
 
   useEffect(() => {
     return () => {
-      if (settledRef.current) return;
-      settledRef.current = true;
-      const s = gameRef.current;
-      if (!s) {
-        void wallet.cashOut(tableId, 0, 'leave');
-        return;
-      }
-      const r = requestLeave(s, s.heroId);
-      void wallet.cashOut(tableId, r.ok ? (r.chips ?? 0) : 0, 'leave');
+      if (leftRef.current) return;
+      leftRef.current = true;
       void lan?.leaveRoom();
     };
-  }, [wallet, tableId, lan]);
+  }, [lan]);
 
   const leave = async () => {
-    if (settledRef.current) {
+    if (leftRef.current) {
       nav.resetToMenu();
       return;
     }
     const s = gameRef.current;
-    if (!s) {
-      nav.resetToMenu();
-      return;
+    leftRef.current = true;
+    if (s && isHost) {
+      const r = requestLeave(s, s.heroId);
+      if (r.ok) setGame(r.state);
     }
-    const r = requestLeave(s, s.heroId);
-    settledRef.current = true;
-    if (r.ok && isHost) setGame(r.state);
-    const chips = r.ok ? (r.chips ?? 0) : 0;
-    await wallet.cashOut(tableId, chips, 'leave');
     await lan?.leaveRoom();
-    nav.toast(`테이블에서 ${fmtMoney(chips)}을 돌려받았습니다.`, 'success');
     nav.resetToMenu();
   };
 
@@ -238,26 +234,27 @@ export function LanTableScreen({ start, tableId }: Props) {
         state={game}
         setState={setGameOnly}
         botDelay={BOT_DELAY[settings.botSpeed]}
-        paused={paused || busted}
+        paused={paused}
         nextHand={nextHand}
-        halted={busted || settledRef.current}
+        halted={false}
         onPause={() => setPaused(true)}
         onLeave={() => {
           setPaused(true);
           setConfirmLeave(true);
         }}
+        onRematch={isHost ? onRematch : undefined}
         sync={isHost ? 'local' : 'remote'}
         onRemoteAction={isHost ? undefined : onRemoteAction}
       />
-      {paused && !busted && (
+      {paused && (
         <div className="practice-pause">
           <Modal
             title={confirmLeave ? '테이블 나가기' : '일시 정지'}
             subtitle={
               confirmLeave
                 ? inHand
-                  ? '진행 중인 판은 폴드 처리됩니다.'
-                  : '남은 칩을 계정으로 돌려받습니다.'
+                  ? '진행 중인 핸드는 폴드 처리되며 중도 퇴장(DNF)으로 기록됩니다.'
+                  : '방에서 나가고 메인 메뉴로 돌아갑니다.'
                 : isHost
                   ? '방장이 일시 정지하면 진행이 멈춥니다.'
                   : '나가면 LAN 연결이 종료됩니다.'

@@ -146,7 +146,7 @@ export class LanRoomService implements IRoomService {
         isHost: true,
         isReady: true,
         peerId: 'local',
-        buyIn: config.minBuyIn,
+        buyIn: config.startingChips || config.minBuyIn,
       },
     ];
     this.peerToPlayer.clear();

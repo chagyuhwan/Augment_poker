@@ -117,7 +117,7 @@ export function Cards() {
               highlight: winners.has(p.id) && showdown,
               hero: true,
               index: idx,
-              scale: 1.7,
+              scale: 1.85,
             });
             return;
           }
@@ -134,7 +134,7 @@ export function Cards() {
             highlight: winners.has(p.id) && showdown,
             hero: true,
             index: idx,
-            scale: 1.4,
+            scale: 1.55,
           });
           return;
         }

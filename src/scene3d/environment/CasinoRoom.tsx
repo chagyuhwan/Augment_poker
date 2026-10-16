@@ -8,8 +8,8 @@ import { carpetTexture, wallTexture } from '../textures';
 
 const ROOM_R = 13;
 const ROOM_H = 8;
-const SPOT_INTENSITY = 42;
-export const BG_COLOR = '#14050b';
+const SPOT_INTENSITY = 48;
+export const BG_COLOR = '#0c0307';
 
 export function CasinoRoom({ quality }: { quality: QualityProfile }) {
   return (
@@ -17,12 +17,15 @@ export function CasinoRoom({ quality }: { quality: QualityProfile }) {
       <RoomLights quality={quality} />
       <Shell />
       <PendantLamp position={[0, 5.3, 0]} main />
-      <BackTable position={[-7.2, 0, -5.8]} rot={0.4} />
-      <BackTable position={[7.4, 0, -5.2]} rot={-0.3} />
-      <BackTable position={[0.6, 0, -10.2]} rot={0.1} />
-      <SlotRow />
-      <Stanchions />
-      {quality.post && <Sparkles count={70} scale={[4.5, 2.6, 4.5]} position={[0, 2.3, 0]} size={2.2} speed={0.18} color="#ffd98a" opacity={0.55} />}
+      {/* 배경 소품은 유지하되 채도·밝기를 낮춘 머티리얼은 Shell/포그가 담당 */}
+      <group position={[0, 0, 0]}>
+        <BackTable position={[-7.2, 0, -5.8]} rot={0.4} />
+        <BackTable position={[7.4, 0, -5.2]} rot={-0.3} />
+        <BackTable position={[0.6, 0, -10.2]} rot={0.1} />
+        <SlotRow />
+        <Stanchions />
+      </group>
+      {quality.post && <Sparkles count={28} scale={[3.2, 1.6, 3.2]} position={[0, 2.1, 0]} size={1.6} speed={0.12} color="#ffd98a" opacity={0.28} />}
     </>
   );
 }
@@ -42,10 +45,10 @@ function RoomLights({ quality }: { quality: QualityProfile }) {
   });
   return (
     <>
-      <hemisphereLight args={['#8a3346', '#12040a', 0.55]} />
-      <ambientLight color="#3a1018" intensity={0.35} />
-      {/* 카메라 쪽 은은한 보조광: 캐릭터 얼굴이 너무 어둡지 않게 */}
-      <directionalLight position={[0, 5, 8]} intensity={0.45} color="#ffd9b0" />
+      <hemisphereLight args={['#6a2838', '#0a0206', 0.32]} />
+      <ambientLight color="#2a0c14" intensity={0.22} />
+      {/* 카메라 쪽 보조광은 약하게 — 얼굴만 살리고 배경은 어둡게 */}
+      <directionalLight position={[0, 5, 8]} intensity={0.32} color="#ffd9b0" />
       <primitive object={target} />
       <spotLight
         ref={spot}

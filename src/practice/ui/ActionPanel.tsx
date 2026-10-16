@@ -41,7 +41,7 @@ export function ActionPanel({ state, paused, onAction }: Props) {
     let text = '';
     if (me?.status === 'waiting') text = '다음 판부터 참가합니다.';
     else if (state.phase === 'betting') text = me?.folded ? '폴드했습니다. 판이 끝나길 기다리는 중…' : '상대 차례…';
-    return <div className="action-panel waiting">{text}</div>;
+    return text ? <div className="action-panel waiting">{text}</div> : <div className="action-panel waiting" />;
   }
 
   const clamp = (v: number) => Math.max(minTotal, Math.min(maxTotal, v));
@@ -51,18 +51,28 @@ export function ActionPanel({ state, paused, onAction }: Props) {
   ];
   const isAllIn = (to: number) => to >= legal.allInTo;
   const capped = state.maxBet !== null && maxTotal < legal.allInTo;
+  const callLabel = legal.canCheck
+    ? '체크'
+    : legal.toCall >= me.chips
+      ? `올인 콜 ${me.chips.toLocaleString()}`
+      : `콜 ${legal.toCall.toLocaleString()}`;
+  const raiseLabel = isAllIn(raiseTo)
+    ? `올인 ${raiseTo.toLocaleString()}`
+    : `${state.currentBet === 0 ? '베팅' : '레이즈'} ${raiseTo.toLocaleString()}`;
 
   return (
-    <div className="action-panel">
-      <button type="button" className="pbtn fold" onClick={() => send({ type: 'fold' })}>
-        폴드 <span className="key-hint">F</span>
-      </button>
-      <button type="button" className="pbtn call" onClick={call}>
-        {legal.canCheck ? '체크' : legal.toCall >= me.chips ? `올인 콜 ${me.chips.toLocaleString()}` : `콜 ${legal.toCall.toLocaleString()}`}{' '}
-        <span className="key-hint">C</span>
-      </button>
+    <div className="action-panel action-panel--controls">
+      <div className="action-panel__row action-panel__row--primary">
+        <button type="button" className="pbtn fold" onClick={() => send({ type: 'fold' })}>
+          폴드 <span className="key-hint">F</span>
+        </button>
+        <button type="button" className="pbtn call" onClick={call}>
+          {callLabel} <span className="key-hint">C</span>
+        </button>
+      </div>
       {legal.canRaise && (
         <div className="raise-box">
+          <div className="raise-box__amount">{raiseTo.toLocaleString()}</div>
           <input
             type="range"
             min={minTotal}
@@ -70,6 +80,7 @@ export function ActionPanel({ state, paused, onAction }: Props) {
             step={Math.max(1, state.bb / 2)}
             value={raiseTo}
             onChange={(e) => setRaiseTo(clamp(Number(e.target.value)))}
+            aria-label="레이즈 금액"
           />
           <div className="raise-presets">
             {presets.map((p) => (
@@ -77,15 +88,12 @@ export function ActionPanel({ state, paused, onAction }: Props) {
                 {p.label}
               </button>
             ))}
-            <button type="button" className="pbtn tiny" onClick={() => setRaiseTo(maxTotal)}>
+            <button type="button" className="pbtn tiny pbtn--danger" onClick={() => setRaiseTo(maxTotal)}>
               {capped ? '최대' : '올인'} <span className="key-hint">A</span>
             </button>
           </div>
           <button type="button" className="pbtn raise" onClick={() => send({ type: 'raise', amount: raiseTo })}>
-            {isAllIn(raiseTo)
-              ? `올인 ${raiseTo.toLocaleString()}`
-              : `${state.currentBet === 0 ? '베팅' : '레이즈'} ${raiseTo.toLocaleString()}`}{' '}
-            <span className="key-hint">R</span>
+            {raiseLabel} <span className="key-hint">R</span>
           </button>
         </div>
       )}

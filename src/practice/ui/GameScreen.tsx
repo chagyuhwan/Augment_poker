@@ -1,12 +1,14 @@
 import { lazy, Suspense, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { decideBotAction } from '../game/ai';
 import { AUGMENTS, KIND_LABEL, MAX_AUGMENT_SLOTS, TIER_LABEL } from '../game/augments';
+import { netChipScore, nextBlindIncreaseHand } from '../../core/matchRules';
 import {
   act,
   byId,
   canUseAugment,
   chooseAugment,
   extendAugmentDeadline,
+  getMatchStandings,
   type EngineResult,
   invokeAugment,
   peekForesight,
@@ -42,10 +44,12 @@ interface Props {
   paused: boolean;
   /** 판이 끝난 뒤 다음 판을 준비(빈자리 채우기 + 시작)한 상태를 돌려준다 */
   nextHand: (s: GameState) => GameState;
-  /** 본인이 소진되어 테이블을 떠나야 하면 true. 자동 진행을 멈춘다 */
+  /** 매치 종료 등으로 자동 진행을 멈출 때 true */
   halted: boolean;
   onPause: () => void;
   onLeave: () => void;
+  /** 매치 종료 후 재대전(방장/로컬만) */
+  onRematch?: () => void;
   /** remote: 엔진은 호스트. 봇·타임아웃·다음 판은 돌리지 않고 액션만 전송 */
   sync?: 'local' | 'remote';
   onRemoteAction?: (request: LanActionRequest) => void;
@@ -60,6 +64,7 @@ export function GameScreen({
   halted,
   onPause,
   onLeave,
+  onRematch,
   sync = 'local',
   onRemoteAction,
 }: Props) {
@@ -148,11 +153,10 @@ export function GameScreen({
     }
   }, [paused, remote]);
 
-  // 판이 끝나면 잠시 결과를 보여 주고 자동으로 다음 판
+  // 핸드가 끝나면 잠시 결과를 보여 주고 자동으로 다음 핸드(마지막이면 matchOver)
   useEffect(() => {
-    if (remote || state.phase !== 'handOver' || halted) {
-      if (remote) setNextAt(null);
-      else if (state.phase !== 'handOver' || halted) setNextAt(null);
+    if (remote || halted || state.phase !== 'handOver') {
+      if (remote || state.phase !== 'handOver' || halted) setNextAt(null);
       return;
     }
     setNextAt(Date.now() + NEXT_HAND_MS + busyLeft());
@@ -223,7 +227,13 @@ export function GameScreen({
   const foresight = peekForesight(state);
   const bySeat = new Map(state.players.map((p) => [p.seat, p]));
   const nextIn = nextAt === null ? null : Math.max(0, Math.ceil((nextAt - now) / 1000));
-  const waitingFor = state.players.filter((p) => p.status !== 'busted' && p.status !== 'leaving').length;
+  const waitingFor = state.players.filter((p) => p.status !== 'leaving').length;
+  const matchHands = state.matchHands || 8;
+  const nextBlindAt = nextBlindIncreaseHand(Math.max(1, state.handNumber), matchHands);
+  const heroNetMatch = me ? netChipScore(me.chips, me.chipGranted) : 0;
+  const standings = state.phase === 'matchOver' ? getMatchStandings(state) : null;
+  const brokePending =
+    me && me.chips === 0 && state.phase === 'handOver' && state.handNumber < matchHands;
 
   const applyAug = (id: AugmentId, payload: AugmentPayload) => {
     remoteOrRun({ kind: 'invokeAugment', id, payload }, (s) => invokeAugment(s, id, payload));
@@ -311,35 +321,71 @@ export function GameScreen({
     </div>
   );
 
-  const resultOrActions =
-    state.phase === 'handOver' && state.result ? (
-      <div className="result-panel">
-        {state.result.lines.map((l, i) => (
-          <div key={i}>{l}</div>
-        ))}
-        {!halted && !remote && (
-          <button
-            type="button"
-            className="pbtn raise"
-            onClick={() => {
-              setNextAt(null);
-              update(nextHand);
-            }}
-          >
-            다음 판 {nextIn !== null ? `${nextIn}초` : ''} <span className="key-hint">Space</span>
+  const matchOverPanel =
+    state.phase === 'matchOver' && standings ? (
+      <div className="result-panel match-over-panel">
+        <div className="match-over-panel__title">🏁 매치 종료 · 최종 순위</div>
+        <ol className="match-standings">
+          {standings.map((row) => (
+            <li key={row.playerId} className={row.rank === 1 && !row.dnf ? 'is-first' : row.dnf ? 'is-dnf' : ''}>
+              <span className="match-standings__rank">{row.dnf ? 'DNF' : `${row.rank}위`}</span>
+              <span className="match-standings__name">{row.name}</span>
+              <span className="match-standings__net">
+                {row.netScore >= 0 ? '+' : ''}
+                {row.netScore.toLocaleString()}
+              </span>
+              <span className="match-standings__meta">
+                칩 {row.chips.toLocaleString()} · 복구 {row.chipRefills}회 · 승 {row.handsWon}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <div className="match-over-panel__actions">
+          {onRematch && !remote && (
+            <button type="button" className="pbtn raise" onClick={onRematch}>
+              재대전
+            </button>
+          )}
+          {!onRematch && remote && <div className="hint">방장이 재대전을 시작할 수 있습니다.</div>}
+          <button type="button" className="pbtn" onClick={onLeave}>
+            나가기
           </button>
-        )}
-        {remote && state.phase === 'handOver' && <div className="hint">방장이 다음 판을 진행합니다…</div>}
+        </div>
       </div>
-    ) : (
-      <ActionPanel
-        state={state}
-        paused={paused}
-        onAction={(a, seq) =>
-          remoteOrRun({ kind: 'act', action: a, actionSeq: seq }, (s) => act(s, s.heroId, a, seq))
-        }
-      />
-    );
+    ) : null;
+
+  const resultOrActions = matchOverPanel ? (
+    matchOverPanel
+  ) : state.phase === 'handOver' && state.result ? (
+    <div className="result-panel">
+      {state.result.lines.map((l, i) => (
+        <div key={i}>{l}</div>
+      ))}
+      {brokePending && <div className="hint">칩이 소진되었습니다. 다음 핸드에 자동 복구됩니다.</div>}
+      {!halted && !remote && (
+        <button
+          type="button"
+          className="pbtn raise"
+          onClick={() => {
+            setNextAt(null);
+            update(nextHand);
+          }}
+        >
+          {state.handNumber >= matchHands ? '결과 보기' : '다음 핸드'} {nextIn !== null ? `${nextIn}초` : ''}{' '}
+          <span className="key-hint">Space</span>
+        </button>
+      )}
+      {remote && state.phase === 'handOver' && <div className="hint">방장이 다음 핸드를 진행합니다…</div>}
+    </div>
+  ) : (
+    <ActionPanel
+      state={state}
+      paused={paused}
+      onAction={(a, seq) =>
+        remoteOrRun({ kind: 'act', action: a, actionSeq: seq }, (s) => act(s, s.heroId, a, seq))
+      }
+    />
+  );
 
   const augmentPicker = state.phase === 'augment' && state.augmentRound && (
     <AugmentPicker
@@ -395,11 +441,30 @@ export function GameScreen({
         <header className="hud-top">
           <div className="hud-chip hud-chip--title">
             <span className={augmented ? 'hud-mode is-aug' : 'hud-mode'}>{augmented ? '증강' : '일반'}</span>
-            {state.handNumber > 0 ? `#${state.handNumber}` : '대기'}
+            {state.handNumber > 0 ? `${state.handNumber}/${matchHands}` : `0/${matchHands}`}
           </div>
-          <div className="hud-chip" title={state.maxBet !== null ? `최대 베팅 ${state.maxBet.toLocaleString()}` : '노리밋'}>
+          <div
+            className="hud-chip"
+            title={
+              nextBlindAt
+                ? `다음 블라인드 증가: ${nextBlindAt}핸드`
+                : state.maxBet !== null
+                  ? `최대 베팅 ${state.maxBet.toLocaleString()}`
+                  : '노리밋'
+            }
+          >
             {state.sb.toLocaleString()}/{state.bb.toLocaleString()}
+            {nextBlindAt ? ` · ↑${nextBlindAt}` : ''}
           </div>
+          {me && (
+            <div
+              className="hud-chip"
+              title={`누적 지급 ${me.chipGranted.toLocaleString()} · 복구 ${me.chipRefills}회`}
+            >
+              순이익 {heroNetMatch >= 0 ? '+' : ''}
+              {heroNetMatch.toLocaleString()}
+            </div>
+          )}
           <div className="hud-top__spacer" />
           <button type="button" className={logOpen ? 'hud-btn is-on' : 'hud-btn'} onClick={() => setLogOpen((v) => !v)}>
             기록
@@ -414,6 +479,17 @@ export function GameScreen({
 
         <div className="hud-center">
           {state.phase === 'waiting' && <div className="hud-pill">{waitingFor < 2 ? '플레이어 기다리는 중…' : '곧 시작합니다…'}</div>}
+          {state.phase === 'matchOver' && <div className="hud-pill">매치 종료</div>}
+          {brokePending && <div className="hud-pill">다음 핸드에 칩 자동 복구</div>}
+          {state.phase === 'betting' && state.handNumber > 0 && (
+            <div className="hud-pill hud-pill--street">
+              <span className="hud-pill__street">
+                {state.street === 'preflop' ? '프리플랍' : state.street === 'flop' ? '플랍' : state.street === 'turn' ? '턴' : '리버'}
+              </span>
+              <span className="hud-pill__pot">팟 {potSize(state).toLocaleString()}</span>
+              {me && state.currentPlayer === me.id && <span className="hud-pill__turn">내 차례</span>}
+            </div>
+          )}
         </div>
 
         {logOpen && (
@@ -430,8 +506,11 @@ export function GameScreen({
           {me && (
             <div className={['hero-panel', heroTurn && 'is-turn', me.folded && 'is-folded'].filter(Boolean).join(' ')}>
               <div className="hero-panel__name">
-                {state.phase !== 'waiting' && me.inHand && state.dealerSeat === me.seat && <span className="seat3d__dealer">D</span>}
+                {state.phase !== 'waiting' && me.inHand && state.dealerSeat === me.seat && (
+                  <span className="seat3d__badge seat3d__badge--d">D</span>
+                )}
                 {me.name}
+                {me.allIn && !me.folded && <span className="seat3d__badge seat3d__badge--allin">ALL IN</span>}
               </div>
               <div className="hero-panel__chips seat-chips">{me.chips.toLocaleString()}</div>
               {heroNet !== undefined && heroNet !== 0 && (
@@ -468,11 +547,13 @@ export function GameScreen({
 
   return (
     <div className="practice game-screen">
-      <header className="topbar">
+        <header className="topbar">
         <h1>봇 대전 · {augmented ? '증강 홀덤' : '일반 홀덤'}</h1>
         <div className="topbar-info">
-          {state.handNumber > 0 ? `핸드 #${state.handNumber}` : '대기 중'} · 블라인드 {state.sb.toLocaleString()}/{state.bb.toLocaleString()}
-          {state.maxBet !== null ? ` · 최대 베팅 ${state.maxBet.toLocaleString()}` : ''} · {state.players.length}/{state.maxSeats}명 · 오프라인
+          {state.handNumber > 0 ? `핸드 ${state.handNumber}/${matchHands}` : `대기 · ${matchHands}핸드`} · 블라인드{' '}
+          {state.sb.toLocaleString()}/{state.bb.toLocaleString()}
+          {me ? ` · 순이익 ${heroNetMatch >= 0 ? '+' : ''}${heroNetMatch.toLocaleString()}` : ''}
+          {state.maxBet !== null ? ` · 최대 베팅 ${state.maxBet.toLocaleString()}` : ''} · {state.players.length}/{state.maxSeats}명
         </div>
         <button type="button" className="pbtn tiny" onClick={onLeave}>
           테이블 나가기

@@ -4,7 +4,6 @@ import { audio } from '../../audio/audioEngine';
 import { menuGesture } from '../../scene3d/menuFx';
 import { Button } from '../components/Button';
 import { Icon, type IconName } from '../components/Icon';
-import { fmtMoney, useWallet } from '../../wallet/useWallet';
 
 interface NavItem {
   icon: IconName;
@@ -44,17 +43,15 @@ function HubButton({ item, index }: { item: NavItem; index: number }) {
 export function MainMenuScreen() {
   const nav = useNavigation();
   const { appInfo, steam, identity, rooms } = useServices();
-  const { account } = useWallet();
   const player = identity.getLocalPlayer();
 
   const left: NavItem[] = [
     { icon: 'plus', label: '방 만들기', hint: '새 테이블을 열고 친구를 초대합니다', onClick: () => nav.openModal({ name: 'create-room' }), primary: true, gesture: 'augment' },
-    { icon: 'play', label: '봇 대전', hint: 'AI를 상대로 홀덤을 플레이합니다', onClick: () => nav.openModal({ name: 'practice-setup' }), gesture: 'bet' },
+    { icon: 'play', label: '봇 대전', hint: 'AI와 매치 전용 칩으로 한 경기를 즐깁니다', onClick: () => nav.openModal({ name: 'practice-setup' }), gesture: 'bet' },
     { icon: 'spark', label: '증강 도감', hint: '20종 증강의 효과와 등급을 봅니다', onClick: () => nav.push({ name: 'augment-codex' }), gesture: 'augment' },
     { icon: 'search', label: '방 찾기', hint: '참가할 수 있는 공개 방 목록', onClick: () => nav.push({ name: 'rooms', mode: 'all' }), gesture: 'check' },
   ];
   const right: NavItem[] = [
-    { icon: 'chip', label: '게임머니', hint: '보유 금액 확인 · 무료 충전 · 내역', onClick: () => nav.push({ name: 'wallet' }), gesture: 'bet' },
     {
       icon: 'invite',
       label: '친구 초대',
@@ -104,15 +101,15 @@ export function MainMenuScreen() {
           </div>
           <div className="profile__text">
             <span className="profile__name">{player.displayName}</span>
-            <span className="profile__money" title="보유 게임머니">
+            <span className="profile__money" title="매치마다 칩이 새로 지급됩니다">
               <Icon name="chip" size={14} />
-              {account ? fmtMoney(account.balance) : '—'}
+              파티 매치
             </span>
           </div>
         </div>
         <div className="main-menu__legal hub__legal">
           <span>v{appInfo.version}</span>
-          <span title="게임머니는 현금·경품·외부 재화로 환전하거나 다른 이용자와 거래할 수 없습니다.">게임머니는 현금 가치가 없습니다</span>
+          <span>매치 칩은 점수용이며 현금 가치가 없습니다</span>
         </div>
         <Button variant="ghost" icon="power" onClick={() => nav.openModal({ name: 'confirm-exit' })} sound={null}>
           게임 종료

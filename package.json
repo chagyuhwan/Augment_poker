@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:qa": "vitest run tests/qaEarlyTermination.test.ts tests/qaAugments.test.ts tests/qaBalanceSim.test.ts",
     "test:watch": "vitest",
     "test:ui": "electron scripts/ui-smoke.cjs",
     "electron:dev": "concurrently -k -n vite,electron \"vite\" \"wait-on tcp:5173 && electron . --dev\"",

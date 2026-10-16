@@ -3,13 +3,11 @@ import { useNavigation } from '../../app/navigation';
 import { useServices } from '../../app/services';
 import { audio } from '../../audio/audioEngine';
 import { getGameMode } from '../../core/gameModes';
-import { buyInRange } from '../../core/roomConfig';
 import { LAN_DEFAULT_PORT } from '../../net/lanProtocol';
-import { ensureFundsForBuyIn } from '../../wallet/ensureFunds';
-import { newTableId } from '../../wallet/walletService';
-import { fmtMoney, useWallet } from '../../wallet/useWallet';
 import { Button } from '../components/Button';
 import { ScreenHeader } from '../components/ScreenHeader';
+
+const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 async function copyText(text: string) {
   try {
@@ -22,44 +20,27 @@ async function copyText(text: string) {
 
 export function LobbyScreen() {
   const nav = useNavigation();
-  const { rooms, lan, wallet, identity } = useServices();
-  const { account, refresh } = useWallet();
+  const { rooms, lan, identity } = useServices();
   const [, setTick] = useState(0);
-  const [buyingIn, setBuyingIn] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [boughtIn, setBoughtIn] = useState(false);
-  const [tableId] = useState(() => newTableId('lan'));
+  const [tableId] = useState(() => `lan-${Date.now().toString(36)}`);
   const leaving = useRef(false);
-  const buyInDone = useRef(false);
-  const navRef = useRef(nav);
-  const walletRef = useRef(wallet);
-  const lanRef = useRef(lan);
-  navRef.current = nav;
-  walletRef.current = wallet;
-  lanRef.current = lan;
 
   const room = rooms.getCurrentRoom();
   const meta = lan?.getLanMeta();
   const isHost = meta?.role === 'host';
   const me = meta?.members.find((m) => m.playerId === meta.localPlayerId);
   const mode = room ? getGameMode(room.config.mode) : null;
-  const roomId = room?.id ?? null;
-  const minBuyIn = room?.config.minBuyIn ?? 0;
 
   const leave = useCallback(async () => {
     if (leaving.current) return;
     leaving.current = true;
     try {
-      if (boughtIn) {
-        const chips = me?.buyIn ?? minBuyIn;
-        await wallet.cashOut(tableId, chips, 'leave');
-        setBoughtIn(false);
-      }
       await rooms.leaveRoom();
     } finally {
       nav.resetToMenu();
     }
-  }, [boughtIn, me?.buyIn, minBuyIn, wallet, tableId, rooms, nav]);
+  }, [rooms, nav]);
 
   useEffect(() => {
     if (!lan) {
@@ -70,6 +51,8 @@ export function LobbyScreen() {
       }
       return;
     }
+    // 매치 칩은 방 설정 startingChips로 전원 동일 — 지갑 바이인 없음
+    void lan.setLocalBuyIn(room?.config.startingChips ?? room?.config.minBuyIn ?? 1000);
     const unsub = lan.onCurrentRoomChanged(() => setTick((n) => n + 1));
     const unsubStart = lan.onMatchStart((payload) => {
       if (payload.role === 'guest') {
@@ -80,53 +63,7 @@ export function LobbyScreen() {
       unsub();
       unsubStart();
     };
-  }, [lan, nav, tableId]);
-
-  // 바이인 1회만. leave/refresh deps로 취소되지 않게 ref 사용
-  useEffect(() => {
-    if (!lan || !roomId || !minBuyIn || boughtIn || buyInDone.current || leaving.current) return;
-    buyInDone.current = true;
-    setBuyingIn(true);
-    const title = rooms.getCurrentRoom()?.config.title ?? 'LAN';
-    void (async () => {
-      try {
-        const funds = await ensureFundsForBuyIn(walletRef.current, minBuyIn, tableId);
-        if (leaving.current) return;
-        if (!funds.ok) {
-          navRef.current.toast(funds.error, 'error');
-          leaving.current = true;
-          await rooms.leaveRoom();
-          navRef.current.resetToMenu();
-          navRef.current.push({ name: 'wallet' });
-          return;
-        }
-        let r = await walletRef.current.buyIn(tableId, minBuyIn, `LAN · ${title}`);
-        if (leaving.current) {
-          if (r.ok) await walletRef.current.cashOut(tableId, minBuyIn, 'leave');
-          return;
-        }
-        if (!r.ok) {
-          const snap = await walletRef.current.snapshot();
-          const seated = snap.account?.tables.some((t) => t.tableId === tableId);
-          if (!seated) {
-            navRef.current.toast(r.error, 'error');
-            leaving.current = true;
-            await rooms.leaveRoom();
-            navRef.current.resetToMenu();
-            return;
-          }
-        }
-        await lanRef.current?.setLocalBuyIn(minBuyIn);
-        await refresh();
-        setBoughtIn(true);
-      } catch (err) {
-        buyInDone.current = false;
-        navRef.current.toast(err instanceof Error ? err.message : '바이인에 실패했습니다.', 'error');
-      } finally {
-        setBuyingIn(false);
-      }
-    })();
-  }, [lan, roomId, minBuyIn, boughtIn, tableId, rooms, refresh]);
+  }, [lan, nav, tableId, room?.config.startingChips, room?.config.minBuyIn]);
 
   if (!room || !lan || !meta) {
     return (
@@ -136,9 +73,12 @@ export function LobbyScreen() {
     );
   }
 
+  const chips = room.config.startingChips || room.config.minBuyIn;
+  const hands = room.config.matchHands ?? 8;
   const primaryIp = meta.addresses[0] ?? '127.0.0.1';
   const joinHint = `${primaryIp} · ${meta.code}`;
-  const range = buyInRange(room.config.minBuyIn);
+  const readyCount = meta.members.filter((m) => m.isReady || m.isHost).length;
+  const canStart = isHost && meta.members.length >= 2 && readyCount >= 2;
 
   const toggleReady = () => {
     audio.play('click');
@@ -146,7 +86,7 @@ export function LobbyScreen() {
   };
 
   const start = async () => {
-    if (!isHost || starting || buyingIn || !boughtIn) return;
+    if (!isHost || starting || !canStart) return;
     setStarting(true);
     try {
       const seatByPeer: Record<string, number> = {};
@@ -170,7 +110,7 @@ export function LobbyScreen() {
     <div className="screen lobby">
       <ScreenHeader
         title={room.config.title}
-        subtitle={`${mode?.shortName ?? ''} · 최소 ${fmtMoney(room.config.minBuyIn)} · 블라인드 ${room.config.smallBlind}/${room.config.bigBlind}`}
+        subtitle={`${mode?.shortName ?? ''} · ${hands}핸드 · 시작칩 ${fmt(chips)} · 블라인드 ${room.config.smallBlind}/${room.config.bigBlind}`}
         actions={
           <Button variant="ghost" icon="power" onClick={() => void leave()}>
             방 나가기
@@ -190,17 +130,16 @@ export function LobbyScreen() {
                   {m.displayName}
                   {m.isHost ? ' · 방장' : ''}
                 </span>
-                <span className={m.isReady ? 'lobby__ready is-on' : 'lobby__ready'}>{m.isReady ? '준비' : '대기'}</span>
-                <span className="lobby__buyin">{fmtMoney(m.buyIn > 0 ? m.buyIn : room.config.minBuyIn)}</span>
+                <span className={m.isReady || m.isHost ? 'lobby__ready is-on' : 'lobby__ready'}>
+                  {m.isReady || m.isHost ? '준비' : '대기'}
+                </span>
+                <span className="lobby__buyin">{fmt(chips)}</span>
               </li>
             ))}
           </ul>
           <p className="lobby__hint">
-            {buyingIn
-              ? '테이블 칩을 가져오는 중…'
-              : `빈자리는 시작 시 봇으로 채웁니다. 가져간 금액 ${fmtMoney(me?.buyIn || (boughtIn ? room.config.minBuyIn : 0))}`}
-            {account ? ` · 계정 잔액 ${fmtMoney(account.balance)}` : ''}
-            {` · 가능 ${fmtMoney(range.min)}~${fmtMoney(range.max)}`}
+            전원 동일 시작 칩 {fmt(chips)}. 칩이 0이어도 다음 핸드에 복구되며, {hands}핸드 후 순이익으로 순위를 가립니다.
+            {meta.members.length < room.config.maxPlayers ? ' 빈자리는 시작 시 봇으로 채울 수 있습니다.' : ''}
           </p>
         </section>
 
@@ -247,22 +186,13 @@ export function LobbyScreen() {
               IP·코드 복사
             </Button>
             {!isHost && (
-              <Button
-                variant={me?.isReady ? 'secondary' : 'primary'}
-                onClick={toggleReady}
-                disabled={!boughtIn || buyingIn}
-              >
+              <Button variant={me?.isReady ? 'secondary' : 'primary'} onClick={toggleReady}>
                 {me?.isReady ? '준비 취소' : '준비'}
               </Button>
             )}
             {isHost && (
-              <Button
-                variant="primary"
-                icon="play"
-                disabled={starting || buyingIn || !boughtIn}
-                onClick={() => void start()}
-              >
-                {buyingIn ? '칩 준비 중…' : starting ? '시작 중…' : !boughtIn ? '입장 처리 중…' : '게임 시작'}
+              <Button variant="primary" icon="play" disabled={starting || !canStart} onClick={() => void start()}>
+                {starting ? '시작 중…' : meta.members.length < 2 ? '최소 2명 필요' : !canStart ? '준비 대기' : '게임 시작'}
               </Button>
             )}
           </div>

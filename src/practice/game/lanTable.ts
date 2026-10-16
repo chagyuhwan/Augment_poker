@@ -1,3 +1,4 @@
+import { DEFAULT_MATCH_HANDS, DEFAULT_STARTING_CHIPS } from '../../core/matchRules';
 import { createTable } from './engine';
 import type { GameState, TableMode } from './types';
 
@@ -21,7 +22,10 @@ export function createLanTable(opts: {
   maxSeats: number;
   smallBlind: number;
   bigBlind: number;
-  minBuyIn: number;
+  /** @deprecated startingChips 사용 */
+  minBuyIn?: number;
+  startingChips?: number;
+  matchHands?: number;
   maxBet: number | null;
   fillBots?: boolean;
   rng?: () => number;
@@ -31,11 +35,14 @@ export function createLanTable(opts: {
   const humans = opts.humans;
   if (humans.length < 1) throw new Error('인간이 최소 1명 필요합니다.');
 
+  const startingChips = opts.startingChips ?? opts.minBuyIn ?? DEFAULT_STARTING_CHIPS;
+  const matchHands = opts.matchHands ?? DEFAULT_MATCH_HANDS;
+
   const others: { name: string; isHuman: boolean; chips: number }[] = [];
   const meta: { peerId: string; playerId: string }[] = [{ peerId: humans[0].peerId, playerId: humans[0].playerId }];
 
   for (let i = 1; i < humans.length; i++) {
-    others.push({ name: humans[i].name, isHuman: true, chips: humans[i].chips });
+    others.push({ name: humans[i].name, isHuman: true, chips: startingChips });
     meta.push({ peerId: humans[i].peerId, playerId: humans[i].playerId });
   }
 
@@ -45,9 +52,7 @@ export function createLanTable(opts: {
     const used = new Set([humans[0].name, ...others.map((o) => o.name)]);
     const pool = BOT_NAMES.filter((n) => !used.has(n));
     const name = pool.length ? pool[Math.floor(rng() * pool.length)] : `봇 ${others.length + 1}`;
-    const raw = opts.minBuyIn * (1 + rng() * 2);
-    const chips = Math.max(opts.minBuyIn, Math.round(raw / opts.bigBlind) * opts.bigBlind);
-    others.push({ name, isHuman: false, chips });
+    others.push({ name, isHuman: false, chips: startingChips });
   }
 
   const state = createTable(
@@ -55,17 +60,18 @@ export function createLanTable(opts: {
       tableId: opts.tableId,
       mode: opts.mode,
       maxSeats: opts.maxSeats,
-      hero: { name: humans[0].name, isHuman: true, chips: humans[0].chips },
+      hero: { name: humans[0].name, isHuman: true, chips: startingChips },
       others,
       smallBlind: opts.smallBlind,
       bigBlind: opts.bigBlind,
       maxBet: opts.maxBet,
+      startingChips,
+      matchHands,
     },
     opts.now,
   );
 
   const seatByPeer: Record<string, number> = {};
-  // createTable: hero gets first id, then others in order
   const ordered = [...state.players].sort((a, b) => a.seat - b.seat);
   let humanIdx = 0;
   for (const p of ordered) {

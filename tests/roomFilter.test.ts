@@ -11,7 +11,7 @@ const room = (overrides: Partial<RoomListing>): RoomListing => ({
   hasPassword: false,
   state: 'waiting',
   hostName: '호스트',
-  minBuyIn: 2000,
+  minBuyIn: 1000,
   ...overrides,
 });
 
@@ -35,9 +35,8 @@ describe('joinBlockReason', () => {
     expect(joinBlockReason(room({ state: 'playing', currentPlayers: 6 }))).toBe('full');
   });
 
-  it('잔액이 최소 입장 게임머니보다 적으면 막는다', () => {
-    expect(joinBlockReason(room({ minBuyIn: 5000 }), 4999)).toBe('money');
-    expect(joinBlockReason(room({ minBuyIn: 5000 }), 5000)).toBeNull();
+  it('계정 잔액과 무관하게 입장할 수 있다', () => {
+    expect(joinBlockReason(room({ minBuyIn: 5000 }), 0)).toBeNull();
     expect(joinBlockReason(room({ minBuyIn: 5000 }), null)).toBeNull();
   });
 });
@@ -50,10 +49,6 @@ describe('filterRooms', () => {
   it('참가 가능한 방만 남긴다', () => {
     expect(filterRooms(rooms, { ...all, joinableOnly: true }).map((r) => r.title)).toEqual([
       '증강 홀덤 한판',
-      'Augmented Seven',
-      '홀덤 초보방',
-    ]);
-    expect(filterRooms(rooms, { ...all, joinableOnly: true }, 10000).map((r) => r.title)).toEqual([
       'Augmented Seven',
       '홀덤 초보방',
     ]);

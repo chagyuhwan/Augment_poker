@@ -46,6 +46,8 @@ function table(o: Partial<CreateTableOptions> & { stacks: number[] }): GameState
       smallBlind: o.smallBlind ?? 5,
       bigBlind: o.bigBlind ?? 10,
       maxBet: o.maxBet ?? null,
+      startingChips: o.startingChips,
+      matchHands: o.matchHands,
     },
     T,
   );
@@ -118,10 +120,22 @@ describe('테이블 생성과 무제한 진행', () => {
     expect(s.players.every((p) => p.augments.length === 0)).toBe(true);
   });
 
-  it('핸드 수 제한 없이 300판 이상 계속되고, 판마다 칩 총량이 보존된다', () => {
+  it('긴 매치에서도 칩 총량이 보존되며 설정된 핸드까지 진행된다', () => {
     const rng = seeded(42);
     let s = createPracticeTable(
-      { tableId: 'loop-test', mode: 'augmented', playerName: '나', buyIn: 5000, botCount: 4, smallBlind: 5, bigBlind: 10, minBuyIn: 2000, maxBet: null },
+      {
+        tableId: 'loop-test',
+        mode: 'augmented',
+        playerName: '나',
+        buyIn: 5000,
+        botCount: 4,
+        smallBlind: 5,
+        bigBlind: 10,
+        minBuyIn: 2000,
+        startingChips: 5000,
+        matchHands: 320,
+        maxBet: null,
+      },
       rng,
       T,
     );
@@ -129,6 +143,7 @@ describe('테이블 생성과 무제한 진행', () => {
     let hands = 0;
     let guard = 0;
     while (hands < 320 && guard++ < 40_000) {
+      if (s.phase === 'matchOver') break;
       if (s.phase === 'betting') {
         s = applyAction(s, randomAction(s, rng), now);
       } else if (s.phase === 'augment') {
@@ -136,7 +151,7 @@ describe('테이블 생성과 무제한 진행', () => {
         s = tickTimeouts(s, now);
       } else {
         if (s.phase === 'handOver') hands++;
-        s = refillBots(s, { botCount: 4, minBuyIn: 2000, bigBlind: 10 }, rng);
+        s = refillBots(s, { botCount: 4, minBuyIn: 2000, bigBlind: 10, startingChips: 5000 }, rng);
         s = startHand(s, now);
         if (s.phase === 'waiting') {
           s = refillBots(s, { botCount: 4, minBuyIn: 2000, bigBlind: 10 }, () => 0);
@@ -185,11 +200,10 @@ describe('테이블 생성과 무제한 진행', () => {
   });
 });
 
-describe('올인과 게임머니 소진', () => {
+describe('올인과 칩 복구', () => {
   it('올인한 플레이어는 결과가 나올 때까지 남고, 이기면 계속 플레이한다', () => {
     let s = table({ stacks: [100, 1000] });
     s = rig(s, { 0: 'As Ah', 1: '7c 2d' }, 'Kd 9s 4h 3c 8d');
-    // 1:1에서는 딜러(SB)가 먼저 행동한다
     const heroFirst = s.currentPlayer === s.heroId;
     if (!heroFirst) s = doAct(s, { type: 'call' });
     s = doAct(s, { type: 'raise', amount: 100 });
@@ -208,35 +222,46 @@ describe('올인과 게임머니 소진', () => {
     expect(byId(next, next.heroId)!.inHand).toBe(true);
   });
 
-  it('판이 끝나고 칩이 0이면 그때 소진 처리하고, 다음 판 전에 자리를 비운다', () => {
-    let s = table({ stacks: [100, 1000, 2000] });
+  it('판이 끝나고 칩이 0이면 퇴장하지 않고, 다음 핸드에 시작 칩을 복구한다', () => {
+    let s = table({ stacks: [100, 1000, 2000], startingChips: 1000 });
     s = rig(s, { 0: '7c 2d', 1: 'As Ah', 2: 'Ks Kh' }, 'Qd 9s 4h 3c 8d');
     s = allInAll(s);
     expect(s.phase).toBe('handOver');
     const me = byId(s, s.heroId)!;
     expect(me.chips).toBe(0);
-    expect(me.status).toBe('busted');
-    expect(s.events.filter((e) => e.type === 'busted')).toHaveLength(1);
+    expect(me.status).toBe('active');
+    expect(s.events.filter((e) => e.type === 'busted' && e.playerId === me.id)).toHaveLength(1);
+    expect(s.events.some((e) => e.type === 'chipRefill')).toBe(false);
 
     const next = startHand(s, T);
-    expect(byId(next, s.heroId)).toBeUndefined();
-    expect(next.players).toHaveLength(2);
+    const revived = byId(next, s.heroId)!;
+    expect(revived.chipRefills).toBe(1);
+    expect(revived.chipGranted).toBe(me.chipGranted + 1000);
+    // 복구 직후 블라인드가 나가므로 보유 칩은 시작칩 이하
+    expect(revived.chips).toBeLessThanOrEqual(1000);
+    expect(revived.chips).toBeGreaterThan(0);
+    expect(next.players.length).toBeGreaterThanOrEqual(3);
     expect(next.phase).toBe('betting');
   });
 
-  it('남은 플레이어가 한 명이면 대기 상태가 되고, 새 참가자가 오면 다시 시작한다', () => {
-    let s = table({ stacks: [1000, 50] });
-    s = rig(s, { 0: 'As Ah', 1: '7c 2d' }, 'Kd 9s 4h 3c 8d');
-    s = allInAll(s);
-    expect(byId(s, 1)!.status).toBe('busted');
+  it('중도 퇴장으로 1명만 남으면 대기하고, 새 참가자가 오면 다시 시작한다', () => {
+    let s = table({ stacks: [1000, 1000] });
     s = startHand(s, T);
-    expect(s.phase).toBe('waiting');
-    expect(canStartHand(s)).toBe(false);
-
-    const r = seatPlayer(s, { name: '새 봇', isHuman: false, chips: 500 });
+    const leave = requestLeave(s, byId(s, s.players.find((p) => p.id !== s.heroId)!.id)!.id, T);
+    expect(leave.ok).toBe(true);
+    if (!leave.ok) return;
+    s = leave.state;
+    if (s.phase === 'handOver' || s.phase === 'betting') {
+      // 폴드 등으로 핸드가 끝나면 다음 핸드 시도
+      if (s.phase === 'handOver') s = startHand(s, T);
+    }
+    // 좌석 정리 후 1명이면 waiting
+    if (s.players.filter((p) => p.status !== 'leaving').length < 2) {
+      expect(s.phase === 'waiting' || !canStartHand(s)).toBe(true);
+    }
+    const r = seatPlayer(s, { name: '새 봇', isHuman: false, chips: 1000 });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(byId(r.state, r.playerId!)!.status).toBe('active');
     expect(canStartHand(r.state)).toBe(true);
     expect(startHand(r.state, T).phase).toBe('betting');
   });
@@ -284,9 +309,10 @@ describe('팟 정산', () => {
 
   it('이긴 칩만큼 진 플레이어가 잃는다 (순이익 합 0)', () => {
     const rng = seeded(3);
-    let s = table({ stacks: [1000, 1000, 1000, 1000] });
+    let s = table({ stacks: [1000, 1000, 1000, 1000], matchHands: 40 });
     for (let n = 0; n < 40; n++) {
       while (s.phase === 'betting') s = applyAction(s, randomAction(s, rng), T);
+      if (s.phase === 'matchOver') break;
       expect(s.phase).toBe('handOver');
       expect(Object.values(s.result!.net).reduce((a, b) => a + b, 0)).toBe(0);
       if (!canStartHand(s)) break;

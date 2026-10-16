@@ -37,27 +37,27 @@ describe('gameModes', () => {
 });
 
 describe('createDefaultRoomConfig', () => {
-  it('명세의 기본값을 쓴다', () => {
+  it('파티 매치 기본값을 쓴다', () => {
     const c = createDefaultRoomConfig('normal-holdem', '철수');
     expect(c).toMatchObject({
       maxPlayers: 6,
       visibility: 'public',
       password: '',
-      minBuyIn: 2000,
+      startingChips: 1000,
+      matchHands: 8,
+      minBuyIn: 1000,
       smallBlind: 10,
       bigBlind: 20,
       ante: 10,
       maxBetMultiple: 0,
-      actionSeconds: 20,
-      augmentPickSeconds: 15,
+      actionSeconds: 15,
+      augmentPickSeconds: 12,
     });
-    expect(c).not.toHaveProperty('handCount');
-    expect(c).not.toHaveProperty('startingChips');
     expect(validateRoomConfig(c)).toEqual([]);
   });
 
-  it('바이인 범위와 최대 베팅 금액을 계산한다', () => {
-    expect(buyInRange(5000)).toEqual({ min: 5000, max: 50000 });
+  it('시작 칩과 최대 베팅 금액을 계산한다', () => {
+    expect(buyInRange(1000)).toEqual({ min: 1000, max: 1000 });
     const c = createDefaultRoomConfig('normal-holdem', '철수');
     expect(maxBetAmount(c)).toBeNull();
     expect(maxBetAmount({ ...c, maxBetMultiple: 50 })).toBe(1000);
@@ -100,30 +100,29 @@ describe('validateRoomConfig', () => {
     expect(fields({ ...base(), password: 'x'.repeat(17) })).toContain('password');
   });
 
-  it('홀덤은 블라인드 쌍과 최소 입장 게임머니 비율을 검사한다', () => {
+  it('홀덤은 시작 블라인드 쌍을 검사한다', () => {
     expect(fields({ ...base(), smallBlind: 10, bigBlind: 30 })).toContain('bigBlind');
-    expect(fields({ ...base(), minBuyIn: 2000, smallBlind: 250, bigBlind: 500 })).toContain('bigBlind');
-    // 정확히 20배는 허용 (경계값)
-    expect(fields({ ...base(), minBuyIn: 10000, smallBlind: 250, bigBlind: 500 })).not.toContain('bigBlind');
+    expect(fields({ ...base(), smallBlind: 10, bigBlind: 20 })).not.toContain('bigBlind');
   });
 
-  it('7포커는 블라인드 대신 앤티를 검사한다', () => {
+  it('7포커는 앤티를 검사한다', () => {
     const seven = createDefaultRoomConfig('normal-seven', '철수');
     expect(fields({ ...seven, smallBlind: 1, bigBlind: 3 })).toEqual([]);
     expect(fields({ ...seven, ante: 7 })).toContain('ante');
-    expect(fields({ ...seven, minBuyIn: 2000, ante: 250 })).toContain('ante');
-    expect(fields({ ...seven, minBuyIn: 5000, ante: 250 })).not.toContain('ante');
   });
 
   it('선택지에 없는 값을 거부한다', () => {
-    expect(fields({ ...base(), minBuyIn: 1234 })).toContain('minBuyIn');
+    expect(fields({ ...base(), startingChips: 1234 })).toContain('startingChips');
+    expect(fields({ ...base(), matchHands: 7 as RoomConfig['matchHands'] })).toContain('matchHands');
     expect(fields({ ...base(), maxBetMultiple: 7 })).toContain('maxBetMultiple');
     expect(fields({ ...base(), actionSeconds: 5 })).toContain('actionSeconds');
     expect(fields({ ...base(), augmentPickSeconds: 60 })).toContain('augmentPickSeconds');
   });
 
-  it('normalizeRoomConfig는 제목 공백을 없앤다', () => {
-    expect(normalizeRoomConfig({ ...base(), title: '  방  ' }).title).toBe('방');
+  it('normalizeRoomConfig는 제목 공백을 없애고 startingChips를 동기화한다', () => {
+    const n = normalizeRoomConfig({ ...base(), title: '  방  ', startingChips: 1500, minBuyIn: 0 });
+    expect(n.title).toBe('방');
+    expect(n.minBuyIn).toBe(1500);
   });
 });
 
@@ -135,7 +134,7 @@ describe('roomCode', () => {
   it('형식을 검사한다', () => {
     expect(isValidRoomCode('K7P2QX')).toBe(true);
     expect(isValidRoomCode('K7P2Q')).toBe(false);
-    expect(isValidRoomCode('K7P2Q0')).toBe(false); // 0은 혼동 문자라 제외
+    expect(isValidRoomCode('K7P2Q0')).toBe(false);
     expect(isValidRoomCode('K7P2QI')).toBe(false);
   });
 

@@ -3,7 +3,6 @@ import { useNavigation } from '../../app/navigation';
 import { useServices } from '../../app/services';
 import { GAME_MODES, getGameMode, type GameModeId } from '../../core/gameModes';
 import {
-  buyInRange,
   createDefaultRoomConfig,
   maxBetAmount,
   maxBetLabel,
@@ -15,8 +14,6 @@ import {
   type RoomConfigField,
   type RoomVisibility,
 } from '../../core/roomConfig';
-import { ensureFundsForBuyIn } from '../../wallet/ensureFunds';
-import { useWallet } from '../../wallet/useWallet';
 import { Button } from '../components/Button';
 import { Field, Segmented, TextInput, Toggle } from '../components/Controls';
 import { Modal } from '../components/Modal';
@@ -25,8 +22,7 @@ const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   const nav = useNavigation();
-  const { identity, rooms, lan, wallet } = useServices();
-  const { refresh } = useWallet();
+  const { identity, rooms, lan } = useServices();
   const [config, setConfig] = useState<RoomConfig>(() =>
     createDefaultRoomConfig(initialMode ?? 'normal-holdem', identity.getLocalPlayer().displayName),
   );
@@ -35,7 +31,6 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   const [busy, setBusy] = useState(false);
 
   const mode = getGameMode(config.mode);
-  const buyIn = buyInRange(config.minBuyIn);
   const maxBet = maxBetAmount(config);
   const effective = useMemo(() => ({ ...config, password: usePassword ? config.password : '' }), [config, usePassword]);
   const errors = useMemo(() => validateRoomConfig(effective), [effective]);
@@ -43,7 +38,12 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   const errorFor = (field: RoomConfigField) =>
     submitted ? (errors.find((e) => e.field === field)?.message ?? null) : null;
 
-  const set = <K extends keyof RoomConfig>(key: K, value: RoomConfig[K]) => setConfig((c) => ({ ...c, [key]: value }));
+  const set = <K extends keyof RoomConfig>(key: K, value: RoomConfig[K]) =>
+    setConfig((c) => {
+      const next = { ...c, [key]: value };
+      if (key === 'startingChips') next.minBuyIn = value as number;
+      return next;
+    });
 
   const submit = async () => {
     setSubmitted(true);
@@ -58,17 +58,6 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
       return;
     }
     setBusy(true);
-    const need = effective.minBuyIn;
-    // 지갑 미로드·묶인 LAN 칩·무료 충전을 처리한 뒤 방을 연다 (잔액 0으로 오인하지 않음)
-    const funds = await ensureFundsForBuyIn(wallet, need);
-    await refresh();
-    if (!funds.ok) {
-      setBusy(false);
-      nav.closeModal();
-      nav.toast(funds.error, 'error');
-      nav.push({ name: 'wallet' });
-      return;
-    }
     const result = await (lan ?? rooms).createRoom(normalizeRoomConfig(effective));
     setBusy(false);
     if (result.ok) {
@@ -82,7 +71,7 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
   return (
     <Modal
       title="방 만들기"
-      subtitle="LAN으로 친구와 홀덤을 합니다. 같은 Wi‑Fi에서 IP·방 코드로 초대하세요. (7포커는 준비 중)"
+      subtitle="매치 전용 칩으로 친구와 한 경기를 즐깁니다. 칩이 0이어도 복구되며, 정해진 핸드가 끝나면 순위가 결정됩니다."
       icon="plus"
       width={1040}
       onClose={nav.closeModal}
@@ -179,19 +168,31 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
 
         <div className="form-col">
           <Field
-            label="최소 입장 게임머니"
-            hint={`입장할 때 ${fmt(buyIn.min)} ~ ${fmt(buyIn.max)}을 계정에서 테이블로 가져옵니다. 남은 금액은 퇴장 시 돌려받습니다.`}
-            error={errorFor('minBuyIn')}
+            label="경기 길이"
+            hint="모두 진행하면 순이익으로 순위를 매깁니다."
+            error={errorFor('matchHands')}
           >
             <Segmented
-              options={ROOM_OPTIONS.minBuyIns.map((n) => ({ value: n, label: fmt(n) }))}
-              value={config.minBuyIn}
-              onChange={(v) => set('minBuyIn', v)}
+              options={ROOM_OPTIONS.matchHands.map((n) => ({ value: n, label: `${n}핸드` }))}
+              value={config.matchHands}
+              onChange={(v) => set('matchHands', v)}
+            />
+          </Field>
+
+          <Field
+            label="시작 칩"
+            hint="전원 동일. 칩이 0이 되면 다음 핸드에 같은 금액이 복구됩니다(점수 보너스 아님)."
+            error={errorFor('startingChips')}
+          >
+            <Segmented
+              options={ROOM_OPTIONS.startingChips.map((n) => ({ value: n, label: fmt(n) }))}
+              value={config.startingChips}
+              onChange={(v) => set('startingChips', v)}
             />
           </Field>
 
           {mode.variant === 'holdem' ? (
-            <Field label="블라인드 (스몰 / 빅)" hint="최소 베팅은 빅 블라인드입니다." error={errorFor('bigBlind')}>
+            <Field label="시작 블라인드" hint="경기가 진행될수록 블라인드가 늘어납니다." error={errorFor('bigBlind')}>
               <Segmented
                 options={ROOM_OPTIONS.blinds.map(([sb, bb]) => ({ value: bb, label: `${fmt(sb)} / ${fmt(bb)}` }))}
                 value={config.bigBlind}
@@ -212,8 +213,8 @@ export function CreateRoomModal({ initialMode }: { initialMode?: GameModeId }) {
             label="최대 베팅"
             hint={
               maxBet === null
-                ? '보유한 칩까지 자유롭게 베팅합니다(노리밋). 판은 끝나지 않고 계속 이어집니다.'
-                : `한 번에 ${fmt(maxBet)}까지 베팅할 수 있습니다. 칩이 부족하면 남은 칩으로 올인합니다.`
+                ? '보유 칩까지 자유롭게 베팅합니다(노리밋).'
+                : `한 번에 ${fmt(maxBet)}까지. 부족하면 올인.`
             }
             error={errorFor('maxBetMultiple')}
           >

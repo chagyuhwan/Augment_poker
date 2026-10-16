@@ -5,7 +5,7 @@ import { easing } from 'maath';
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { AUGMENTS, TIER_LABEL } from '../../practice/game/augments';
-import type { Player } from '../../practice/game/types';
+import type { GameState, Player } from '../../practice/game/types';
 import { AVATAR_STYLES, faceCenter, OUTLINE, polar, SEAT, seatAngle, viewIndexOf, type HatKind } from '../layout';
 import { COLORS, toon } from '../materials';
 import { useFx, useScene, viewOf } from '../sceneContext';
@@ -15,8 +15,26 @@ type Transient = { kind: 'bet' | 'allin' | 'check' | 'fold' | 'win' | 'lose' | '
 const STATUS_LABEL: Partial<Record<Player['status'], string>> = {
   waiting: '다음 판 대기',
   leaving: '퇴장 예정',
-  busted: '게임머니 소진',
+  busted: '칩 소진 · 복구 대기',
 };
+
+/** 현재 핸드의 SB/BB 좌석 (딜러 기준 홀덤 규칙) */
+function blindBadges(s: GameState): Map<number, 'SB' | 'BB'> {
+  const out = new Map<number, 'SB' | 'BB'>();
+  if (s.phase === 'waiting' || s.handNumber <= 0) return out;
+  const seated = s.players.filter((p) => p.inHand).sort((a, b) => a.seat - b.seat);
+  if (seated.length < 2) return out;
+  const dealer = seated.find((p) => p.seat === s.dealerSeat) ?? seated[0];
+  const after = (from: Player) => {
+    const next = seated.filter((p) => p.seat > from.seat);
+    return next[0] ?? seated[0];
+  };
+  const sb = seated.length === 2 ? dealer : after(dealer);
+  const bb = after(sb);
+  out.set(sb.id, 'SB');
+  out.set(bb.id, 'BB');
+  return out;
+}
 
 export function Avatars() {
   const { state } = useScene();
@@ -352,14 +370,16 @@ export function Avatar({ player }: { player: Player }) {
   const net = handOver ? state.result?.net[player.id] : undefined;
   const status = STATUS_LABEL[player.status];
   const dealer = state.phase !== 'waiting' && player.inHand && state.dealerSeat === player.seat;
+  const blind = blindBadges(state).get(player.id);
   const augments = state.mode === 'augmented' ? player.augments : [];
+  const allIn = player.allIn && player.inHand && !player.folded;
 
   return (
     <group position={polar(a, SEAT.avatar, 0)} rotation-y={faceCenter(a)}>
       <Stool />
       <mesh ref={ring} rotation-x={-Math.PI / 2} position-y={0.03} visible={false}>
-        <ringGeometry args={[0.42, 0.52, 20]} />
-        <meshBasicMaterial color="#ffd84a" toneMapped={false} transparent opacity={0.9} />
+        <ringGeometry args={[0.48, 0.58, 24]} />
+        <meshBasicMaterial color="#ffd84a" toneMapped={false} transparent opacity={0.95} />
       </mesh>
       <group ref={root}>
         {/* 다리(앉은 자세) */}
@@ -463,10 +483,12 @@ export function Avatar({ player }: { player: Player }) {
               {net.toLocaleString()}
             </div>
           )}
-          <div className="seat3d__name">
-            {dealer && <span className="seat3d__dealer">D</span>}
-            {player.name}
+          <div className="seat3d__badges">
+            {dealer && <span className="seat3d__badge seat3d__badge--d">D</span>}
+            {blind && <span className={`seat3d__badge seat3d__badge--${blind.toLowerCase()}`}>{blind}</span>}
+            {allIn && <span className="seat3d__badge seat3d__badge--allin">ALL IN</span>}
           </div>
+          <div className="seat3d__name">{player.name}</div>
           <div className="seat3d__chips seat-chips">{player.chips.toLocaleString()}</div>
           {status && <div className="seat3d__status">{status}</div>}
           {!player.connected && <div className="seat3d__status">연결 끊김</div>}

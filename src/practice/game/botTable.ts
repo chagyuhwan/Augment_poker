@@ -1,3 +1,4 @@
+import { DEFAULT_MATCH_HANDS, DEFAULT_STARTING_CHIPS } from '../../core/matchRules';
 import { createTable, seatPlayer } from './engine';
 import type { GameState, TableMode } from './types';
 
@@ -7,20 +8,16 @@ export interface PracticeOptions {
   tableId: string;
   mode: TableMode;
   playerName: string;
-  /** 계정에서 가져온 바이인 금액 */
+  /** 매치 시작 칩(전원 동일). 레거시 필드명 buyIn 유지 */
   buyIn: number;
-  /** 처음 앉는 봇 수 (1~5). 이 수를 유지하도록 빈자리를 채운다 */
   botCount: number;
   smallBlind: number;
   bigBlind: number;
+  /** @deprecated startingChips와 동일 */
   minBuyIn: number;
   maxBet: number | null;
-}
-
-/** 봇 스택은 계정 지갑과 무관한 가상 칩. 최소 입장 금액 ~ 3배 사이에서 빅 블라인드 단위로 정한다. */
-function botStack(o: Pick<PracticeOptions, 'minBuyIn' | 'bigBlind'>, rng: () => number): number {
-  const raw = o.minBuyIn * (1 + rng() * 2);
-  return Math.max(o.minBuyIn, Math.round(raw / o.bigBlind) * o.bigBlind);
+  matchHands?: number;
+  startingChips?: number;
 }
 
 function pickName(s: GameState | null, rng: () => number): string {
@@ -30,6 +27,8 @@ function pickName(s: GameState | null, rng: () => number): string {
 }
 
 export function createPracticeTable(o: PracticeOptions, rng: () => number = Math.random, now = Date.now()): GameState {
+  const startingChips = o.startingChips ?? o.buyIn ?? o.minBuyIn ?? DEFAULT_STARTING_CHIPS;
+  const matchHands = o.matchHands ?? DEFAULT_MATCH_HANDS;
   const count = Math.min(5, Math.max(1, Math.floor(o.botCount)));
   const names: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -40,31 +39,34 @@ export function createPracticeTable(o: PracticeOptions, rng: () => number = Math
     {
       tableId: o.tableId,
       mode: o.mode,
-      hero: { name: o.playerName, isHuman: true, chips: o.buyIn },
-      others: names.map((name) => ({ name, isHuman: false, chips: botStack(o, rng) })),
+      hero: { name: o.playerName, isHuman: true, chips: startingChips },
+      others: names.map((name) => ({ name, isHuman: false, chips: startingChips })),
       smallBlind: o.smallBlind,
       bigBlind: o.bigBlind,
       maxBet: o.maxBet,
+      matchHands,
+      startingChips,
     },
     now,
   );
 }
 
 /**
- * 판 사이에 빈자리를 봇으로 채운다. 소진/퇴장한 봇 자리에 새 봇이 앉아 다음 판부터 참가한다.
- * 한 판에 한 명씩, 일정 확률로만 들어와 자리가 비어 있는 시간이 생긴다.
+ * 빈자리를 봇으로 채운다. 매치 중에는 칩 소진으로 퇴장하지 않으므로
+ * 주로 자발 퇴장·연결 끊김 자리를 채운다.
  */
 export function refillBots(
   s: GameState,
-  o: Pick<PracticeOptions, 'botCount' | 'minBuyIn' | 'bigBlind'>,
+  o: Pick<PracticeOptions, 'botCount' | 'bigBlind'> &
+    Partial<Pick<PracticeOptions, 'minBuyIn' | 'startingChips' | 'buyIn'>>,
   rng: () => number = Math.random,
 ): GameState {
-  const seatedBots = s.players.filter((p) => !p.isHuman && p.status !== 'busted' && p.status !== 'leaving').length;
-  const occupied = s.players.filter((p) => p.status !== 'busted' && p.status !== 'leaving').length;
+  const chips = o.startingChips ?? o.buyIn ?? o.minBuyIn ?? s.startingChips;
+  const seatedBots = s.players.filter((p) => !p.isHuman && p.status !== 'leaving').length;
+  const occupied = s.players.filter((p) => p.status !== 'leaving').length;
   if (seatedBots >= o.botCount || occupied >= s.maxSeats) return s;
-  // 혼자 남았으면 바로 채우고, 아니면 판마다 40% 확률
   const alone = occupied <= 1;
   if (!alone && rng() >= 0.4) return s;
-  const r = seatPlayer(s, { name: pickName(s, rng), isHuman: false, chips: botStack(o, rng) });
+  const r = seatPlayer(s, { name: pickName(s, rng), isHuman: false, chips });
   return r.ok ? r.state : s;
 }

@@ -12,7 +12,7 @@ interface Props {
 const STATUS_LABEL: Partial<Record<Player['status'], string>> = {
   waiting: '다음 판 참가 대기',
   leaving: '퇴장 예정',
-  busted: '게임머니 소진',
+  busted: '칩 소진 · 복구 대기',
 };
 
 export function Seat({ state, player, position, onCardClick }: Props) {

@@ -28,9 +28,9 @@ export function faceCenter(angle: number): number {
   return -angle - Math.PI / 2;
 }
 
-/** 게임 테이블 기본 카메라 */
-export const CAM_POS: Vec3 = [0, 6.4, 7.0];
-export const CAM_LOOK: Vec3 = [0, 0.85, -0.5];
+/** 게임 테이블 기본 카메라 — 살짝 줌인해 배경보다 테이블·HUD가 먼저 보이게 */
+export const CAM_POS: Vec3 = [0, 5.85, 6.35];
+export const CAM_LOOK: Vec3 = [0, 0.95, -0.25];
 
 export const SEAT = {
   avatar: 2.75,

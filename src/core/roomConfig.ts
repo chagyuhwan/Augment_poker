@@ -1,4 +1,14 @@
 import { getGameMode, isGameModeId, type GameModeId } from './gameModes';
+import {
+  DEFAULT_ACTION_SECONDS,
+  DEFAULT_AUGMENT_PICK_SECONDS,
+  DEFAULT_MATCH_BB,
+  DEFAULT_MATCH_HANDS,
+  DEFAULT_MATCH_SB,
+  DEFAULT_STARTING_CHIPS,
+  MATCH_HAND_OPTIONS,
+  type MatchHandCount,
+} from './matchRules';
 
 export type RoomVisibility = 'public' | 'private';
 
@@ -9,17 +19,23 @@ export interface RoomConfig {
   visibility: RoomVisibility;
   /** 빈 문자열이면 비밀번호 없음 */
   password: string;
-  /** 입장할 때 테이블로 가져와야 하는 최소 게임머니 */
-  minBuyIn: number;
-  /** 기본 베팅 단위(홀덤). 최소 베팅은 빅 블라인드 */
+  /** 매치 시작 칩(모든 플레이어 동일). 계정 지갑과 무관 */
+  startingChips: number;
+  /** 경기 핸드 수 */
+  matchHands: MatchHandCount;
+  /** 기본 블라인드(홀덤). 경기 중 스케줄로 증가 */
   smallBlind: number;
   bigBlind: number;
-  /** 기본 베팅 단위(7포커) */
+  /** 기본 앤티(7포커) */
   ante: number;
-  /** 한 번에 걸 수 있는 최대 금액 = 빅 블라인드(또는 앤티) × 배수. 0이면 제한 없음(노리밋) */
+  /** 한 번에 걸 수 있는 최대 = 빅블라인드×배수. 0=노리밋 */
   maxBetMultiple: number;
   actionSeconds: number;
   augmentPickSeconds: number;
+  /**
+   * @deprecated 매치 전용 칩으로 대체. startingChips와 동기화 유지(구 세이브/테스트 호환)
+   */
+  minBuyIn: number;
 }
 
 export const ROOM_LIMITS = {
@@ -32,36 +48,26 @@ export const ROOM_LIMITS = {
 } as const;
 
 export const ROOM_OPTIONS = {
-  minBuyIns: [2_000, 5_000, 10_000, 20_000, 50_000],
+  startingChips: [500, 1_000, 1_500, 2_000, 3_000],
+  matchHands: MATCH_HAND_OPTIONS,
   blinds: [
     [5, 10],
     [10, 20],
     [25, 50],
     [50, 100],
-    [100, 200],
-    [250, 500],
   ] as ReadonlyArray<readonly [number, number]>,
-  antes: [5, 10, 25, 50, 100, 250],
+  antes: [5, 10, 25, 50, 100],
   maxBetMultiples: [0, 50, 100],
-  actionSeconds: [10, 15, 20, 30, 45],
-  augmentPickSeconds: [10, 15, 20],
+  actionSeconds: [10, 15, 20, 30],
+  augmentPickSeconds: [10, 12, 15, 20],
+  /** @deprecated */
+  minBuyIns: [500, 1_000, 1_500, 2_000, 3_000],
 } as const;
 
-/** 칩이 너무 빨리 바닥나지 않도록 최소 입장 게임머니는 빅 블라인드(또는 앤티)의 최소 이 배수여야 한다. */
-export const MIN_BUYIN_TO_FORCED_BET_RATIO = 20;
-/** 한 번에 테이블로 가져올 수 있는 최대 금액 = 최소 입장 게임머니 × 이 배수 */
-export const MAX_BUYIN_MULTIPLE = 10;
-
-export function buyInRange(minBuyIn: number): { min: number; max: number } {
-  return { min: minBuyIn, max: minBuyIn * MAX_BUYIN_MULTIPLE };
-}
-
-/** 이 방의 기본 베팅 단위 (홀덤은 빅 블라인드, 7포커는 앤티) */
 export function forcedBetUnit(config: Pick<RoomConfig, 'mode' | 'bigBlind' | 'ante'>): number {
   return getGameMode(config.mode).variant === 'holdem' ? config.bigBlind : config.ante;
 }
 
-/** 한 번에 걸 수 있는 최대 금액. 제한이 없으면 null */
 export function maxBetAmount(config: Pick<RoomConfig, 'mode' | 'bigBlind' | 'ante' | 'maxBetMultiple'>): number | null {
   return config.maxBetMultiple > 0 ? forcedBetUnit(config) * config.maxBetMultiple : null;
 }
@@ -83,13 +89,15 @@ export function createDefaultRoomConfig(mode: GameModeId, hostName: string): Roo
     maxPlayers: 6,
     visibility: 'public',
     password: '',
-    minBuyIn: 2_000,
-    smallBlind: 10,
-    bigBlind: 20,
+    startingChips: DEFAULT_STARTING_CHIPS,
+    matchHands: DEFAULT_MATCH_HANDS,
+    minBuyIn: DEFAULT_STARTING_CHIPS,
+    smallBlind: DEFAULT_MATCH_SB,
+    bigBlind: DEFAULT_MATCH_BB,
     ante: 10,
     maxBetMultiple: 0,
-    actionSeconds: 20,
-    augmentPickSeconds: 15,
+    actionSeconds: DEFAULT_ACTION_SECONDS,
+    augmentPickSeconds: DEFAULT_AUGMENT_PICK_SECONDS,
   };
 }
 
@@ -136,22 +144,19 @@ export function validateRoomConfig(config: RoomConfig): RoomConfigError[] {
     }
   }
 
-  if (!includes(ROOM_OPTIONS.minBuyIns, config.minBuyIn)) {
-    add('minBuyIn', '최소 입장 게임머니를 선택해 주세요.');
+  if (!includes(ROOM_OPTIONS.startingChips, config.startingChips)) {
+    add('startingChips', '시작 칩을 선택해 주세요.');
+  }
+  if (!MATCH_HAND_OPTIONS.includes(config.matchHands as MatchHandCount)) {
+    add('matchHands', '경기 길이를 선택해 주세요.');
   }
 
   const variant = isGameModeId(config.mode) ? getGameMode(config.mode).variant : null;
   if (variant === 'holdem') {
     const validBlinds = ROOM_OPTIONS.blinds.some(([sb, bb]) => sb === config.smallBlind && bb === config.bigBlind);
-    if (!validBlinds) add('bigBlind', '블라인드를 선택해 주세요.');
-    else if (config.bigBlind * MIN_BUYIN_TO_FORCED_BET_RATIO > config.minBuyIn) {
-      add('bigBlind', `최소 입장 게임머니는 빅 블라인드의 ${MIN_BUYIN_TO_FORCED_BET_RATIO}배 이상이어야 합니다.`);
-    }
+    if (!validBlinds) add('bigBlind', '시작 블라인드를 선택해 주세요.');
   } else if (variant === 'seven') {
     if (!includes(ROOM_OPTIONS.antes, config.ante)) add('ante', '앤티를 선택해 주세요.');
-    else if (config.ante * MIN_BUYIN_TO_FORCED_BET_RATIO > config.minBuyIn) {
-      add('ante', `최소 입장 게임머니는 앤티의 ${MIN_BUYIN_TO_FORCED_BET_RATIO}배 이상이어야 합니다.`);
-    }
   }
 
   if (!includes(ROOM_OPTIONS.maxBetMultiples, config.maxBetMultiple)) {
@@ -167,7 +172,21 @@ export function validateRoomConfig(config: RoomConfig): RoomConfigError[] {
   return errors;
 }
 
-/** 저장/전송 직전 정리: 제목 앞뒤 공백 제거 */
+/** 저장/전송 직전 정리 */
 export function normalizeRoomConfig(config: RoomConfig): RoomConfig {
-  return { ...config, title: config.title.trim() };
+  const startingChips = config.startingChips || config.minBuyIn || DEFAULT_STARTING_CHIPS;
+  return {
+    ...config,
+    title: config.title.trim(),
+    startingChips,
+    minBuyIn: startingChips,
+    matchHands: (MATCH_HAND_OPTIONS.includes(config.matchHands as MatchHandCount)
+      ? config.matchHands
+      : DEFAULT_MATCH_HANDS) as MatchHandCount,
+  };
+}
+
+/** @deprecated buyInRange — 매치 칩은 전원 동일 */
+export function buyInRange(startingChips: number): { min: number; max: number } {
+  return { min: startingChips, max: startingChips };
 }

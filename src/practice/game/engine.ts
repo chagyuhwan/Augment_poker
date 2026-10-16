@@ -1,4 +1,5 @@
-﻿import {
+﻿import { blindsForHand, DEFAULT_MATCH_HANDS, DEFAULT_STARTING_CHIPS, rankMatchPlayers } from '../../core/matchRules';
+import {
   applyRerollFatePick,
   canUseAugment,
   onStreetEndClearEffects,
@@ -44,6 +45,10 @@ export interface CreateTableOptions {
   /** null이면 노리밋 */
   maxBet: number | null;
   maxSeats?: number;
+  /** 경기 총 핸드 수 (기본 8) */
+  matchHands?: number;
+  /** 시작·복구 칩 (기본 1000). hero/others.chips가 있으면 그 값을 쓰되 granted도 맞춤 */
+  startingChips?: number;
 }
 
 function clone(s: GameState): GameState {
@@ -116,12 +121,17 @@ const augmentCtx = {
 // ── 테이블 생성 / 착석 ──
 
 function newPlayer(s: GameState, req: SeatRequest, seat: number, status: Player['status']): Player {
+  const chips = req.chips > 0 ? req.chips : s.startingChips;
   const p: Player = {
     id: s.nextPlayerId++,
     seat,
     name: req.name.trim().slice(0, 16) || '플레이어',
     isHuman: req.isHuman,
-    chips: req.chips,
+    chips,
+    chipGranted: chips,
+    chipRefills: 0,
+    handsWon: 0,
+    potWon: 0,
     hole: [],
     bet: 0,
     totalBet: 0,
@@ -141,6 +151,8 @@ function newPlayer(s: GameState, req: SeatRequest, seat: number, status: Player[
 }
 
 export function createTable(o: CreateTableOptions, now = Date.now()): GameState {
+  const startingChips = o.startingChips ?? o.hero.chips ?? DEFAULT_STARTING_CHIPS;
+  const matchHands = o.matchHands ?? DEFAULT_MATCH_HANDS;
   const s: GameState = {
     tableId: o.tableId,
     mode: o.mode,
@@ -161,8 +173,12 @@ export function createTable(o: CreateTableOptions, now = Date.now()): GameState 
     lastAggressor: null,
     sb: o.smallBlind,
     bb: o.bigBlind,
+    baseSb: o.smallBlind,
+    baseBb: o.bigBlind,
     maxBet: o.maxBet,
     handNumber: 0,
+    matchHands,
+    startingChips,
     actionSeq: 0,
     log: [],
     augmentRound: null,
@@ -175,10 +191,16 @@ export function createTable(o: CreateTableOptions, now = Date.now()): GameState 
     eventSeq: 0,
     minted: 0,
   };
-  const me = newPlayer(s, o.hero, 0, 'active');
+  const heroReq = { ...o.hero, chips: o.hero.chips > 0 ? o.hero.chips : startingChips };
+  const me = newPlayer(s, heroReq, 0, 'active');
   s.heroId = me.id;
-  o.others.slice(0, s.maxSeats - 1).forEach((req, i) => newPlayer(s, req, i + 1, 'active'));
-  pushLog(s, `테이블 입장 · 블라인드 ${s.sb}/${s.bb}${s.maxBet ? ` · 최대 베팅 ${s.maxBet}` : ' · 노리밋'}`);
+  o.others.slice(0, s.maxSeats - 1).forEach((req, i) =>
+    newPlayer(s, { ...req, chips: req.chips > 0 ? req.chips : startingChips }, i + 1, 'active'),
+  );
+  pushLog(
+    s,
+    `매치 시작 준비 · ${matchHands}핸드 · 시작칩 ${startingChips.toLocaleString()} · 블라인드 ${s.sb}/${s.bb}${s.maxBet ? ` · 최대 ${s.maxBet}` : ' · 노리밋'}`,
+  );
   return canStartHand(s) ? startHand(s, now) : s;
 }
 
@@ -186,7 +208,9 @@ export function createTable(o: CreateTableOptions, now = Date.now()): GameState 
  * 빈자리에 플레이어를 앉힌다. 판이 진행 중이면 대기 상태로 앉아 다음 판부터 참가한다.
  */
 export function seatPlayer(prev: GameState, req: SeatRequest): EngineResult & { playerId?: number } {
-  if (!Number.isSafeInteger(req.chips) || req.chips <= 0) return { ok: false, error: '가져올 게임머니가 없습니다.' };
+  const chips = req.chips > 0 ? req.chips : prev.startingChips;
+  if (!Number.isSafeInteger(chips) || chips <= 0) return { ok: false, error: '시작 칩이 없습니다.' };
+  req = { ...req, chips };
   const taken = new Set(prev.players.map((p) => p.seat));
   let seat = -1;
   for (let i = 0; i < prev.maxSeats; i++) {
@@ -206,29 +230,128 @@ export function seatPlayer(prev: GameState, req: SeatRequest): EngineResult & { 
 }
 
 function eligibleForHand(p: Player): boolean {
-  return (p.status === 'active' || p.status === 'waiting') && p.connected && p.chips > 0;
+  // 칩 0이어도 다음 핸드 복구 대상이므로 참가 가능(복구는 startHand에서)
+  return (p.status === 'active' || p.status === 'waiting' || p.status === 'busted') && p.connected;
 }
 
 export function canStartHand(s: GameState): boolean {
+  if (s.phase === 'matchOver') return false;
   return (s.phase === 'waiting' || s.phase === 'handOver') && s.players.filter(eligibleForHand).length >= 2;
 }
 
-/** 소진/퇴장한 플레이어를 자리에서 지운다. 증강과 게임 상태도 함께 사라진다. */
+export function isMatchComplete(s: GameState): boolean {
+  return s.phase === 'matchOver' || (s.phase === 'handOver' && s.handNumber >= s.matchHands);
+}
+
+/** 자발 퇴장(leaving)만 제거. 칩 0은 퇴장시키지 않는다. */
 function cleanupSeats(s: GameState) {
   const keep: Player[] = [];
   for (const p of s.players) {
-    if (p.status === 'busted') {
-      pushLog(s, `🚪 ${p.name}: 게임머니가 모두 소진되어 퇴장했습니다.`);
-      continue;
-    }
     if (p.status === 'leaving') {
       emit(s, { type: 'left', playerId: p.id, chips: p.chips, reason: p.connected ? 'leave' : 'disconnect' });
       pushLog(s, `🚪 ${p.name} 퇴장`);
       continue;
     }
+    // 레거시 busted → active로 복귀(칩 복구는 refillBrokePlayers)
+    if (p.status === 'busted') p.status = 'active';
     keep.push(p);
   }
   s.players = keep;
+}
+
+/** 다음 핸드가 남았을 때만 칩 0 플레이어에게 시작 칩을 1회 지급 */
+function refillBrokePlayers(s: GameState) {
+  for (const p of s.players) {
+    if (p.status === 'leaving' || !p.connected) continue;
+    if (p.chips > 0) continue;
+    const amt = s.startingChips;
+    p.chips = amt;
+    p.chipGranted += amt;
+    p.chipRefills += 1;
+    s.minted += amt; // 칩 총량 불변식용(복구는 점수 보너스가 아님 — NetChipScore는 chipGranted로 상쇄)
+    p.status = 'active';
+    p.allIn = false;
+    emit(s, { type: 'chipRefill', playerId: p.id, amount: amt, handNo: s.handNumber });
+    pushLog(s, `🔄 ${p.name}: 칩 ${amt.toLocaleString()} 복구 (누적 지급 ${p.chipGranted.toLocaleString()})`);
+  }
+}
+
+function endMatch(s: GameState): GameState {
+  s.phase = 'matchOver';
+  s.currentPlayer = -1;
+  s.augmentRound = null;
+  emit(s, { type: 'matchEnded', handNo: s.handNumber });
+  const standings = rankMatchPlayers(
+    s.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      chips: p.chips,
+      chipGranted: p.chipGranted,
+      chipRefills: p.chipRefills,
+      handsWon: p.handsWon,
+      potWon: p.potWon,
+      dnf: p.status === 'leaving',
+    })),
+  );
+  const top = standings.filter((x) => x.rank === 1 && !x.dnf);
+  pushLog(
+    s,
+    `🏁 매치 종료 (${s.handNumber}/${s.matchHands}핸드) · 우승 ${top.map((t) => `${t.name}(${t.netScore >= 0 ? '+' : ''}${t.netScore})`).join(', ') || '—'}`,
+  );
+  return s;
+}
+
+export function getMatchStandings(s: GameState) {
+  return rankMatchPlayers(
+    s.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      chips: p.chips,
+      chipGranted: p.chipGranted,
+      chipRefills: p.chipRefills,
+      handsWon: p.handsWon,
+      potWon: p.potWon,
+      dnf: p.status === 'leaving',
+    })),
+  );
+}
+
+/** 재대전: 칩·증강·핸드 초기화, 좌석 유지 */
+export function rematch(prev: GameState, now = Date.now()): GameState {
+  const s = clone(prev);
+  cleanupSeats(s);
+  for (const p of s.players) {
+    p.chips = s.startingChips;
+    p.chipGranted = s.startingChips;
+    p.chipRefills = 0;
+    p.handsWon = 0;
+    p.potWon = 0;
+    p.status = 'active';
+    p.augments = [];
+    p.hole = [];
+    p.bet = 0;
+    p.totalBet = 0;
+    p.inHand = false;
+    p.folded = true;
+    p.allIn = false;
+    p.hasActed = false;
+    p.lastAction = null;
+  }
+  s.handNumber = 0;
+  s.phase = 'waiting';
+  s.result = null;
+  s.sb = s.baseSb;
+  s.bb = s.baseBb;
+  s.minRaise = s.baseBb;
+  s.effects = emptyEffects();
+  s.augmentRound = null;
+  s.augmentRoundsDone = 0;
+  s.community = [];
+  s.deck = [];
+  s.revealed = {};
+  s.runout = false;
+  pushLog(s, `🔁 재대전 · ${s.matchHands}핸드 · 시작칩 ${s.startingChips.toLocaleString()}`);
+  return canStartHand(s) ? startHand(s, now) : s;
 }
 
 function resetHandFields(s: GameState) {
@@ -261,38 +384,62 @@ function resetHandFields(s: GameState) {
 }
 
 /**
- * 다음 판을 시작한다. 정산이 끝난 뒤 자동으로 호출되며, 판 수 제한 없이 계속 반복된다.
- * 참가 가능한 플레이어가 2명 미만이면 새 참가자가 올 때까지 대기 상태가 된다.
+ * 다음 핸드를 시작한다. 설정된 matchHands를 모두 치렀으면 matchOver로 전환한다.
+ * 칩 0 플레이어는 마지막 핸드가 아닐 때만 시작 칩을 복구한다.
  */
 export function startHand(prev: GameState, now = Date.now()): GameState {
+  if (prev.phase === 'matchOver') return prev;
   if (prev.phase !== 'waiting' && prev.phase !== 'handOver') return prev;
+
+  // 직전 핸드가 마지막이면 복구 없이 매치 종료
+  if (prev.phase === 'handOver' && prev.handNumber >= (prev.matchHands || DEFAULT_MATCH_HANDS)) {
+    return endMatch(clone(prev));
+  }
+
   const s = clone(prev);
+  if (!s.matchHands) s.matchHands = DEFAULT_MATCH_HANDS;
+  if (!s.startingChips) s.startingChips = DEFAULT_STARTING_CHIPS;
+  if (!s.baseSb) s.baseSb = s.sb;
+  if (!s.baseBb) s.baseBb = s.bb;
+
   cleanupSeats(s);
+  // 다음 핸드가 남았으므로 칩 0 복구
+  refillBrokePlayers(s);
   resetHandFields(s);
   s.actionSeq += 1;
 
-  const eligible = s.players.filter(eligibleForHand);
+  const eligible = s.players.filter((p) => eligibleForHand(p) && p.chips > 0);
   if (eligible.length < 2) {
+    // 복구 후에도 2명 미만이면 대기
     if (s.phase !== 'waiting') pushLog(s, '⏸ 참가자가 부족해 새 플레이어를 기다립니다.');
     s.phase = 'waiting';
     return s;
   }
 
   s.handNumber += 1;
+  const blinds = blindsForHand(s.handNumber, s.matchHands, s.baseSb, s.baseBb);
+  s.sb = blinds.sb;
+  s.bb = blinds.bb;
+  s.minRaise = s.bb;
+
   for (const p of eligible) {
     p.status = 'active';
     p.inHand = true;
     p.folded = false;
   }
+  // 칩이 아직 0인 비참가자는 대기
+  for (const p of s.players) {
+    if (!p.inHand && p.status !== 'leaving') p.status = p.chips > 0 ? 'waiting' : 'active';
+  }
+
   s.dealerSeat = nextPlayer(s, s.dealerSeat, (p) => p.inHand)!.seat;
-  pushLog(s, `━━ 핸드 #${s.handNumber} (블라인드 ${s.sb}/${s.bb}) ━━`);
+  pushLog(s, `━━ 핸드 #${s.handNumber}/${s.matchHands} (블라인드 ${s.sb}/${s.bb}) ━━`);
 
   s.deck = shuffle(fullDeck(s));
   for (const p of eligible) {
     p.hole = s.deck.splice(-2, 2);
   }
 
-  // 1:1이면 딜러가 스몰 블라인드
   const dealer = s.players.find((p) => p.seat === s.dealerSeat)!;
   const sbP = eligible.length === 2 ? dealer : nextPlayer(s, s.dealerSeat, (p) => p.inHand)!;
   const bbP = nextPlayer(s, sbP.seat, (p) => p.inHand)!;
@@ -300,7 +447,7 @@ export function startHand(prev: GameState, now = Date.now()): GameState {
   const bbAmt = putChips(bbP, s.bb);
   sbP.lastAction = `SB ${sbAmt}`;
   bbP.lastAction = `BB ${bbAmt}`;
-  s.currentBet = s.bb;
+  s.currentBet = Math.max(sbAmt, bbAmt);
   s.minRaise = s.bb;
   pushLog(s, `${sbP.name} 스몰 블라인드 ${sbAmt}, ${bbP.name} 빅 블라인드 ${bbAmt}`);
 
@@ -480,11 +627,26 @@ function advance(s: GameState, now: number) {
     }
     return true;
   });
-  s.currentPlayer = (next ?? nextPlayer(s, seatOf(s, s.currentPlayer), canAct))!.id;
+  const fallback = next ?? nextPlayer(s, seatOf(s, s.currentPlayer), canAct);
+  if (!fallback) {
+    // 행동 가능자가 사라진 예외 경로 — 런아웃으로 안전하게 진행
+    resetStreet(s);
+    s.runout = true;
+    continueRunout(s, now);
+    return;
+  }
+  s.currentPlayer = fallback.id;
 }
 
 function dealCommunity(s: GameState, n: number) {
-  for (let i = 0; i < n; i++) s.community.push(s.deck.pop()!);
+  for (let i = 0; i < n; i++) {
+    const card = s.deck.pop();
+    if (!card) {
+      pushLog(s, '⚠ 덱이 부족하여 공용 카드를 더 깔 수 없습니다.');
+      break;
+    }
+    s.community.push(card);
+  }
 }
 
 function resetStreet(s: GameState) {
@@ -545,11 +707,16 @@ function startBettingRound(s: GameState, now: number) {
   }
   const actLast = s.effects.actLastId;
   const skipLast = actLast !== null && s.effects.actLastStreet === s.street;
-  s.currentPlayer = nextPlayer(
-    s,
-    s.dealerSeat,
-    (p) => canAct(p) && !(skipLast && p.id === actLast),
-  )!.id;
+  // actLast만 남거나 필터로 후보가 비면 아무 행동 가능 플레이어로 폴백 (비정상 종료/크래시 방지)
+  const first =
+    nextPlayer(s, s.dealerSeat, (p) => canAct(p) && !(skipLast && p.id === actLast)) ??
+    nextPlayer(s, s.dealerSeat, canAct);
+  if (!first) {
+    s.runout = true;
+    continueRunout(s, now);
+    return;
+  }
+  s.currentPlayer = first.id;
 }
 
 /** 더 베팅할 사람이 없을 때 남은 카드를 깐다. 증강 선택 시점에서는 멈춘다. */
@@ -812,24 +979,35 @@ function finishHand(s: GameState, result: HandResult) {
   s.phase = 'handOver';
   s.currentPlayer = -1;
   s.augmentRound = null;
-  // 판 종료 시 증강·임시 효과 즉시 초기화(다음 startHand에서도 다시 비움)
   for (const p of s.players) p.augments = [];
   s.effects = emptyEffects();
   s.actionSeq += 1;
-  // 팟은 모두 분배됐다
   for (const p of s.players) {
     p.bet = 0;
     p.totalBet = 0;
   }
+  for (const id of result.winnerIds) {
+    const w = byId(s, id);
+    if (w) w.handsWon += 1;
+  }
+  if (result.won) {
+    for (const [idStr, amt] of Object.entries(result.won)) {
+      const w = byId(s, Number(idStr));
+      if (w && amt > 0) w.potWon += amt;
+    }
+  }
   emit(s, { type: 'handSettled', handNo: s.handNumber, pot: result.pot, lines: result.lines });
 
-  // 정산이 끝난 뒤에만 소진 여부를 판단한다. 올인했더라도 이겼다면 계속 플레이한다.
+  const lastHand = s.handNumber >= (s.matchHands || DEFAULT_MATCH_HANDS);
   for (const p of s.players) {
     if (p.inHand && p.chips === 0 && p.status !== 'leaving') {
-      p.status = 'busted';
-      p.augments = [];
+      // 퇴장하지 않음 — 다음 핸드에서 복구(마지막 핸드는 복구 없음)
       emit(s, { type: 'busted', playerId: p.id, handNo: s.handNumber });
-      pushLog(s, `💀 ${p.name}: 게임머니가 모두 소진되었습니다.`);
+      if (lastHand) {
+        pushLog(s, `💀 ${p.name}: 칩 소진 (매치 마지막 핸드 · 복구 없음)`);
+      } else {
+        pushLog(s, `💀 ${p.name}: 칩 소진 · 다음 핸드에 ${s.startingChips.toLocaleString()}칩 복구`);
+      }
     }
   }
 }
@@ -846,7 +1024,14 @@ function awardUncontested(s: GameState, winner: Player) {
   const lines = [`🏆 ${winner.name}이(가) ${pot}칩을 획득했습니다. (상대 전원 폴드)`];
   applyWinBonus(s, winner, pot, lines);
   const won = new Map([[winner.id, pot]]);
-  finishHand(s, { showdown: false, lines, winnerIds: [winner.id], pot, net: netOf(s, won) });
+  finishHand(s, {
+    showdown: false,
+    lines,
+    winnerIds: [winner.id],
+    pot,
+    net: netOf(s, won),
+    won: Object.fromEntries(won),
+  });
 }
 
 export interface SidePot {
@@ -926,7 +1111,14 @@ function showdown(s: GameState) {
     if (w > 0) applyWinBonus(s, p, w, lines);
   }
 
-  finishHand(s, { showdown: true, lines, winnerIds: [...won.keys()], pot, net: netOf(s, won) });
+  finishHand(s, {
+    showdown: true,
+    lines,
+    winnerIds: [...won.keys()],
+    pot,
+    net: netOf(s, won),
+    won: Object.fromEntries(won),
+  });
 }
 
 // ── 능동형 증강 ──

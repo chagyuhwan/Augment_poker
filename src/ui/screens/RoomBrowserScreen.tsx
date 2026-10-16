@@ -4,13 +4,13 @@ import { useServices } from '../../app/services';
 import { GAME_MODES, getGameMode } from '../../core/gameModes';
 import { filterRooms, JOIN_BLOCK_LABEL, joinBlockReason } from '../../net/roomFilter';
 import type { RoomListing, RoomModeFilter } from '../../net/types';
-import { fmtMoney, useWallet } from '../../wallet/useWallet';
 import { Button, IconButton } from '../components/Button';
 import { Segmented, TextInput, Toggle } from '../components/Controls';
 import { Icon } from '../components/Icon';
 import { ScreenHeader } from '../components/ScreenHeader';
 
 const AUTO_REFRESH_MS = 15_000;
+const fmt = (n: number) => n.toLocaleString('ko-KR');
 
 type LoadState =
   | { status: 'loading' }
@@ -22,17 +22,9 @@ const MODE_FILTERS: { value: RoomModeFilter; label: string }[] = [
   ...GAME_MODES.map((m) => ({ value: m.id as RoomModeFilter, label: m.shortName })),
 ];
 
-function RoomRow({
-  room,
-  balance,
-  onJoin,
-}: {
-  room: RoomListing;
-  balance: number | null;
-  onJoin: (room: RoomListing) => void;
-}) {
+function RoomRow({ room, onJoin }: { room: RoomListing; onJoin: (room: RoomListing) => void }) {
   const mode = getGameMode(room.mode);
-  const blocked = joinBlockReason(room, balance);
+  const blocked = joinBlockReason(room);
   return (
     <div className={blocked ? 'room-row is-blocked' : 'room-row'}>
       <div className="room-row__title">
@@ -41,7 +33,7 @@ function RoomRow({
       </div>
       <div>
         <span className={mode.augmented ? 'badge badge--augment' : 'badge'}>{mode.shortName}</span>
-        <span className="room-row__buyin">최소 {fmtMoney(room.minBuyIn)}</span>
+        <span className="room-row__buyin">시작칩 {fmt(room.minBuyIn)}</span>
       </div>
       <div className="room-row__players">
         <span className="pips">
@@ -65,7 +57,7 @@ function RoomRow({
           title={blocked ? JOIN_BLOCK_LABEL[blocked] : undefined}
           onClick={() => onJoin(room)}
         >
-          {blocked === 'full' ? '가득 참' : blocked === 'money' ? '충전 필요' : room.state === 'playing' ? '다음 판 참가' : '참가'}
+          {blocked === 'full' ? '가득 참' : room.state === 'playing' ? '관전 입장' : '참가'}
         </Button>
       </div>
     </div>
@@ -80,8 +72,6 @@ export function RoomBrowserScreen({ initialMode }: { initialMode: RoomModeFilter
   const [search, setSearch] = useState('');
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const requestId = useRef(0);
-  const { account } = useWallet();
-  const balance = account?.balance ?? null;
 
   const refresh = useCallback(async () => {
     const id = ++requestId.current;
@@ -101,17 +91,12 @@ export function RoomBrowserScreen({ initialMode }: { initialMode: RoomModeFilter
   }, [refresh, rooms.available]);
 
   const visible = useMemo(
-    () => (state.status === 'ready' ? filterRooms(state.rooms, { mode, joinableOnly, search }, balance) : []),
-    [state, mode, joinableOnly, search, balance],
+    () => (state.status === 'ready' ? filterRooms(state.rooms, { mode, joinableOnly, search }) : []),
+    [state, mode, joinableOnly, search],
   );
 
   const join = (room: RoomListing) => {
-    const blocked = joinBlockReason(room, balance);
-    if (blocked === 'money') {
-      nav.toast(`${JOIN_BLOCK_LABEL.money}. 최소 ${fmtMoney(room.minBuyIn)}이 필요합니다.`, 'error');
-      nav.push({ name: 'wallet' });
-      return;
-    }
+    const blocked = joinBlockReason(room);
     if (blocked) {
       nav.toast(JOIN_BLOCK_LABEL[blocked], 'error');
       return;
@@ -232,7 +217,7 @@ export function RoomBrowserScreen({ initialMode }: { initialMode: RoomModeFilter
             </div>
           )}
 
-          {state.status === 'ready' && visible.map((room) => <RoomRow key={room.id} room={room} balance={balance} onJoin={join} />)}
+          {state.status === 'ready' && visible.map((room) => <RoomRow key={room.id} room={room} onJoin={join} />)}
         </div>
 
         {state.status === 'ready' && (

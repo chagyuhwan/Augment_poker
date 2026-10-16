@@ -15,14 +15,14 @@ export interface Card {
 
 export type Street = 'preflop' | 'flop' | 'turn' | 'river';
 
-/** waiting: 2명 미만이라 대기 · betting: 베팅 · augment: 증강 선택(베팅/딜링 정지) · handOver: 정산 결과 표시 */
-export type Phase = 'waiting' | 'betting' | 'augment' | 'handOver';
+/** waiting: 대기 · betting: 베팅 · augment: 증강 선택 · handOver: 핸드 정산 · matchOver: 경기 종료 */
+export type Phase = 'waiting' | 'betting' | 'augment' | 'handOver' | 'matchOver';
 
 export type TableMode = 'normal' | 'augmented';
 
 /**
- * active: 착석(다음 판 참가 대상) · waiting: 판 진행 중에 들어와 다음 판부터 참가
- * leaving: 퇴장 요청, 판이 끝나면 제거 · busted: 정산 후 게임머니 0, 다음 판 전에 제거
+ * active: 착석 · waiting: 다음 판부터 참가 · leaving: 퇴장 예정
+ * busted: 레거시(매치 모드에서는 칩 0이어도 퇴장하지 않고 다음 핸드에 복구)
  */
 export type PlayerStatus = 'active' | 'waiting' | 'leaving' | 'busted';
 
@@ -66,8 +66,16 @@ export interface Player {
   seat: number;
   name: string;
   isHuman: boolean;
-  /** 팟에 넣지 않은 테이블 칩 */
+  /** 매치 전용 칩(계정 지갑과 무관) */
   chips: number;
+  /** 시작·복구로 지급받은 칩 총합 */
+  chipGranted: number;
+  /** 칩 자동 복구 횟수 */
+  chipRefills: number;
+  /** 승리한 핸드 수 */
+  handsWon: number;
+  /** 획득한 팟 칩 합 */
+  potWon: number;
   hole: Card[];
   bet: number;
   totalBet: number;
@@ -95,6 +103,8 @@ export interface HandResult {
   winnerIds: number[];
   pot: number;
   net: Record<number, number>;
+  /** 플레이어별 팟에서 받은 칩(사이드팟 포함) */
+  won?: Record<number, number>;
 }
 
 export interface AugmentPickEntry {
@@ -142,6 +152,8 @@ export type TableEvent =
   | { seq: number; type: 'handStarted'; handNo: number }
   | { seq: number; type: 'handSettled'; handNo: number; pot: number; lines: string[] }
   | { seq: number; type: 'busted'; playerId: number; handNo: number }
+  | { seq: number; type: 'chipRefill'; playerId: number; amount: number; handNo: number }
+  | { seq: number; type: 'matchEnded'; handNo: number }
   | { seq: number; type: 'joined'; playerId: number }
   | { seq: number; type: 'left'; playerId: number; chips: number; reason: 'leave' | 'disconnect' }
   | { seq: number; type: 'augmentUsed'; playerId: number; augmentId: AugmentId; blocked?: boolean }
@@ -169,10 +181,18 @@ export interface GameState {
   minRaise: number;
   raisesThisStreet: number;
   lastAggressor: number | null;
+  /** 현재 핸드에 적용 중인 블라인드 */
   sb: number;
   bb: number;
+  /** 매치 시작 시 기준 블라인드(스케줄 계산용) */
+  baseSb: number;
+  baseBb: number;
   maxBet: number | null;
   handNumber: number;
+  /** 경기 총 핸드 수 */
+  matchHands: number;
+  /** 전원 동일 시작·복구 칩 */
+  startingChips: number;
   actionSeq: number;
   log: string[];
   augmentRound: AugmentRound | null;

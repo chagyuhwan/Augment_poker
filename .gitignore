@@ -4,3 +4,4 @@ release
 steam/output
 *.tsbuildinfo
 test-results
+qa-results

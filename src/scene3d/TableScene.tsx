@@ -129,16 +129,17 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
           shadows={q.shadows}
           dpr={q.dpr}
           gl={{ antialias: q.antialias, powerPreference: 'high-performance' }}
-          camera={{ position: CAM_POS.toArray(), fov: 42, near: 0.1, far: 60 }}
+          camera={{ position: CAM_POS.toArray(), fov: 40, near: 0.1, far: 50 }}
           onCreated={({ gl }) => {
             gl.toneMapping = THREE.ACESFilmicToneMapping;
-            gl.toneMappingExposure = 1.05;
+            gl.toneMappingExposure = 0.98;
             // three r186에서 PCFSoftShadowMap이 제거되어 PCF로 고정한다
             gl.shadowMap.type = THREE.PCFShadowMap;
           }}
         >
           <color attach="background" args={[BG_COLOR]} />
-          <fog attach="fog" args={[BG_COLOR, 10, 26]} />
+          {/* 가까운 포그로 배경·주변 오브젝트 존재감을 줄이고 테이블로 시선 집중 */}
+          <fog attach="fog" args={[BG_COLOR, 7.5, 18]} />
           <SceneContext.Provider value={ctx}>
             <Suspense fallback={null}>
               <CasinoRoom quality={q} />
@@ -150,8 +151,8 @@ export function TableScene({ fallback, ...props }: Props & { fallback: ReactNode
               <CameraRig />
               {q.post && (
                 <EffectComposer multisampling={0}>
-                  <Bloom luminanceThreshold={0.9} luminanceSmoothing={0.2} intensity={0.75} mipmapBlur />
-                  <Vignette offset={0.28} darkness={0.72} />
+                  <Bloom luminanceThreshold={0.92} luminanceSmoothing={0.25} intensity={0.45} mipmapBlur />
+                  <Vignette offset={0.22} darkness={0.85} />
                   <SMAA />
                 </EffectComposer>
               )}
